@@ -400,7 +400,7 @@ let t2Handle = null, nextPlayTime = 0;
 let currentTopic = 'Machine Learning basics';
 let t1Fired = false, t2Fired = false;
 let toolRetryCount = {}, sessionResumptionHandle = null;
-const results = { ws:null, t1:null, conv:null, t2:null, scores:null, close:null, errors:[] };
+const results = { ws:null, t1:null, conv:null, t2:null, scores:null, close:null, errors:[], scoresData:null, reportReason:'' };
 
 // ═══════════════════════════════════════════════════════════
 //  UI HELPERS
@@ -418,8 +418,8 @@ function log(msg, level='info') {
   if (level === 'error') {
     const el2 = $('errorList');
     if (el2.textContent === 'No errors yet.') el2.textContent='';
-    el2.textContent += `[${currentScenario}] ${msg}\n`;
-    results[currentScenario].errors.push(String(msg));
+    el2.textContent += `[ERROR] ${msg}\n`;
+    results.errors.push(String(msg));
   }
 }
 
@@ -436,6 +436,13 @@ function setResult(check, pass) {
   results[check] = pass;
   cell.textContent = pass ? '✅' : '❌';
   cell.className = pass ? 'rpass' : 'rfail';
+  
+  if (check === 'scores' && results.scoresData) {
+    const s = results.scoresData;
+    cell.innerHTML = `C:${s.Clarity} A:${s.Accuracy}`;
+    cell.style.fontSize = '10px';
+  }
+
   updateOverall(); updateReport();
 }
 
@@ -522,10 +529,12 @@ function handleTool(name, id, args) {
     if (!ok) {
       toolRetryCount[id]=(toolRetryCount[id]||0)+1;
       if (toolRetryCount[id]<=2) { sendToolResponse(id,name,{error:'Invalid args'}); return; }
-      log('Max retries reached','error'); setResult(currentScenario,'t2',false); setResult(currentScenario,'scores',false); disconnect(); return;
+      log('Max retries reached','error'); setResult('t2',false); setResult('scores',false); disconnect(); return;
     }
     log(`✅ end_session — Clarity:${scores.Clarity} Accuracy:${scores.Accuracy}`, 'success');
-    setResult(currentScenario,'t2',true); setResult(currentScenario,'scores',true);
+    results.scoresData = scores;
+    results.reportReason = reason;
+    setResult('t2',true); setResult('scores',true);
     sendToolResponse(id,name,{result:{object_value:'Acknowledged.'}});
     showEndOverlay(reason,scores);
     setTimeout(()=>disconnect(true),1500);
@@ -645,7 +654,7 @@ async function connect() {
         onerror: err => { log(`WS error: ${JSON.stringify(err)}`,'error'); setStatus('error','Error'); if(!results.ws) setResult('ws',false); },
       },
     });
-  } catch(e) { log(`connect() error: ${e.message}`,'error'); setStatus('error','Failed'); setResult(currentScenario,'ws',false); cleanup(); }
+  } catch(e) { log(`connect() error: ${e.message}`,'error'); setStatus('error','Failed'); setResult('ws',false); cleanup(); }
 }
 
 window.disconnect = function(clean=false) {
@@ -686,7 +695,10 @@ function r2s(v){ return v===null?'—':v?'Pass':'Fail'; }
 function updateReport() {
   const date=new Date().toISOString().split('T')[0];
   const errLog=results.errors.map(e=>`[ERR] ${e}`).join('\n')||'None';
-  const row=`| LIVE | ${r2s(results.ws)} | ${r2s(results.t1)} | ${r2s(results.conv)} | ${r2s(results.t2)} | ${r2s(results.scores)} | ${r2s(results.close)} |`;
+  
+  const scoreStr = results.scoresData ? `C:${results.scoresData.Clarity} A:${results.scoresData.Accuracy}` : r2s(results.scores);
+  
+  const row=`| LIVE | ${r2s(results.ws)} | ${r2s(results.t1)} | ${r2s(results.conv)} | ${r2s(results.t2)} | ${scoreStr} | ${r2s(results.close)} |`;
   const rec=()=>{
     if(results.t1&&results.t2) return '- [x] Test successful — model response and termination handled correctly.';
     return '- [ ] Needs further investigation — see errors log';
@@ -698,6 +710,9 @@ function updateReport() {
 | Sc | WS | T1 | Conv | T2→end | Scores | Close |
 |---|---|---|---|---|---|---|
 ${row}
+
+## Performance Summary
+${results.reportReason || 'No summary generated yet.'}
 
 ## Console Errors
 \`\`\`
