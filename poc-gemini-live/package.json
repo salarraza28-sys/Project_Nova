@@ -1,0 +1,14 @@
+{
+  "name": "poc-gemini-live",
+  "version": "1.0.0",
+  "description": "POC: Gemini 3.1 Flash Live Preview — Migration Test",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^1.34.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {}
+}

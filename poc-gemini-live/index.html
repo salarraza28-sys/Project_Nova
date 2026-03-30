@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NOVA — Gemini Live Migration POC</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:system-ui,sans-serif;
+      background:#0a0a0f;
+      color:#e8e8f0;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+    }
+
+    /* ── SHARED ── */
+    .screen{width:100%;max-width:480px;padding:36px 28px;display:none;flex-direction:column;gap:20px;align-items:stretch}
+    .screen.active{display:flex}
+
+    .nova-orb{
+      width:60px;height:60px;border-radius:50%;
+      background:radial-gradient(circle at 38% 38%,#a89af7,#6c5ce7 55%,#3d2fa0);
+      margin:0 auto 4px;flex-shrink:0;
+    }
+
+    h1{font-size:26px;font-weight:600;letter-spacing:-0.5px;text-align:center}
+    .sub{font-size:14px;color:#555;text-align:center;line-height:1.5}
+
+    .field{display:flex;flex-direction:column;gap:7px}
+    .field label{font-size:11px;font-weight:600;color:#666;letter-spacing:0.07em;text-transform:uppercase}
+    .field input,.field select{
+      background:#13131a;border:1px solid #252530;border-radius:10px;
+      color:#e8e8f0;font-family:inherit;font-size:14px;padding:11px 14px;
+      outline:none;transition:border-color .2s;
+    }
+    .field input:focus,.field select:focus{border-color:#7c6ff7}
+    .field select option{background:#13131a}
+    .field .hint{font-size:11px;color:#444;line-height:1.5}
+
+    .key-row{display:flex;gap:8px;align-items:center}
+    .key-row input{flex:1}
+    .key-eye{
+      background:#13131a;border:1px solid #252530;border-radius:10px;
+      color:#555;font-size:13px;padding:11px 13px;cursor:pointer;
+      white-space:nowrap;transition:border-color .2s;
+    }
+    .key-eye:hover{border-color:#7c6ff7;color:#9b8ff7}
+
+    .badge{
+      font-size:11px;font-weight:600;background:#1a1a2e;border:1px solid #2a2a4a;
+      color:#7c6ff7;padding:3px 12px;border-radius:99px;align-self:center;letter-spacing:0.05em;
+    }
+
+    .btn-primary{
+      background:#7c6ff7;color:#fff;border:none;border-radius:12px;
+      font-family:inherit;font-size:15px;font-weight:600;padding:14px;
+      cursor:pointer;transition:opacity .2s,transform .1s;width:100%;
+    }
+    .btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+    .btn-primary:disabled{opacity:.35;cursor:not-allowed;transform:none}
+
+    .btn-ghost{
+      background:transparent;color:#555;border:1px solid #252530;border-radius:10px;
+      font-family:inherit;font-size:13px;padding:9px 18px;cursor:pointer;
+      transition:all .2s;align-self:center;
+    }
+    .btn-ghost:hover{border-color:#7c6ff7;color:#9b8ff7}
+
+    .err{font-size:13px;color:#ef4444;text-align:center;min-height:18px}
+
+    /* ── SCENARIO CARDS ── */
+    .scenario-grid{display:flex;flex-direction:column;gap:8px}
+    .scenario-card{
+      background:#13131a;border:1px solid #252530;border-radius:12px;
+      padding:14px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;
+      transition:border-color .2s,background .2s;
+    }
+    .scenario-card:hover{border-color:#7c6ff7;background:#17172a}
+    .scenario-card.selected{border-color:#7c6ff7;background:#1a1730}
+    .sc-tag{
+      font-size:12px;font-weight:700;width:26px;height:26px;border-radius:8px;
+      background:#1e1a3a;color:#9b8ff7;border:1px solid #3a336a;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;
+    }
+    .sc-info{flex:1}
+    .sc-label{font-size:14px;font-weight:500;color:#e8e8f0;margin-bottom:3px}
+    .sc-sub{font-size:12px;color:#555}
+    .sc-badge{
+      font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;
+      align-self:center;flex-shrink:0;
+    }
+    .sc-badge.old{background:#1a2420;color:#22c55e;border:1px solid #1e3a2e}
+    .sc-badge.new{background:#1e1a3a;color:#7c6ff7;border:1px solid #3a336a}
+
+    /* ── TIMER ROW ── */
+    .t2-row{display:flex;align-items:center;gap:12px}
+    .t2-row input[type=range]{flex:1;accent-color:#7c6ff7;cursor:pointer}
+    .t2-val{font-size:15px;font-weight:600;color:#7c6ff7;min-width:52px;text-align:right}
+
+    /* ── STATUS PILL ── */
+    .status-pill{
+      display:flex;align-items:center;gap:9px;
+      background:#13131a;border:1px solid #252530;border-radius:10px;padding:10px 14px;
+    }
+    .status-dot{width:8px;height:8px;border-radius:50%;background:#333;flex-shrink:0}
+    .status-dot.connected{background:#22c55e;box-shadow:0 0 6px #22c55e;animation:dotPulse 2s infinite}
+    .status-dot.connecting{background:#eab308;animation:dotPulse 1s infinite}
+    .status-dot.error{background:#ef4444}
+    @keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+    /* ── MAIN PANEL ── */
+    #mainPanel{
+      display:none;
+      width:100%;max-width:640px;height:100vh;
+      flex-direction:column;
+    }
+    #mainPanel.active{display:flex}
+
+    .chat-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 20px;border-bottom:1px solid #1a1a28;
+    }
+    .hl{display:flex;align-items:center;gap:10px}
+    .h-orb{
+      width:32px;height:32px;border-radius:50%;
+      background:radial-gradient(circle at 38% 38%,#a89af7,#6c5ce7 55%,#3d2fa0);
+    }
+    .h-title{font-size:15px;font-weight:600}
+    .h-sub{font-size:11px;color:#444;margin-top:1px}
+    .h-right{display:flex;align-items:center;gap:8px}
+    .scenario-pill{
+      font-size:11px;font-weight:600;background:#1e1a3a;color:#9b8ff7;
+      border:1px solid #3a336a;padding:3px 10px;border-radius:99px;
+    }
+    .back-btn{
+      background:#13131a;border:1px solid #252530;border-radius:8px;
+      color:#555;font-size:12px;padding:5px 12px;cursor:pointer;
+      transition:all .2s;
+    }
+    .back-btn:hover{border-color:#7c6ff7;color:#9b8ff7}
+
+    /* Tabs */
+    .tabs-bar{display:flex;border-bottom:1px solid #1a1a28;padding:0 20px}
+    .tab{
+      padding:12px 16px;font-size:13px;cursor:pointer;
+      border-bottom:2px solid transparent;color:#444;transition:all .2s;
+    }
+    .tab.active{color:#9b8ff7;border-bottom-color:#7c6ff7}
+    .tab:hover{color:#e8e8f0}
+    .tab-content{display:none;flex:1;overflow:hidden;flex-direction:column}
+    .tab-content.active{display:flex}
+
+    /* Log */
+    .log-area{
+      flex:1;overflow-y:auto;padding:14px 20px;
+      font-family:'Fira Code',monospace;font-size:12px;line-height:1.7;
+    }
+    .log-entry{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.02)}
+    .log-time{color:#333;flex-shrink:0}
+    .log-level{
+      flex-shrink:0;font-weight:700;font-size:10px;
+      padding:1px 6px;border-radius:4px;align-self:flex-start;margin-top:2px;
+    }
+    .level-info{background:rgba(124,111,247,.15);color:#9b8ff7}
+    .level-success{background:rgba(34,197,94,.15);color:#22c55e}
+    .level-warn{background:rgba(234,179,8,.15);color:#eab308}
+    .level-error{background:rgba(239,68,68,.15);color:#ef4444}
+    .level-tool{background:rgba(168,85,247,.15);color:#c084fc}
+    .log-msg{flex:1;color:#aaa;word-break:break-all;white-space:pre-wrap}
+
+    /* Results */
+    .results-area{flex:1;overflow-y:auto;padding:20px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{
+      text-align:left;padding:9px 13px;background:#13131a;
+      border:1px solid #1e1e2e;font-size:10px;text-transform:uppercase;
+      letter-spacing:.06em;color:#444;
+    }
+    td{padding:9px 13px;border:1px solid #1e1e2e}
+    tr:hover td{background:rgba(255,255,255,.01)}
+    .rpass{color:#22c55e;font-weight:600}
+    .rfail{color:#ef4444;font-weight:600}
+    .rpend{color:#333}
+
+    /* Report */
+    .report-area{flex:1;overflow-y:auto;padding:20px}
+    pre.report-md{
+      background:#13131a;border:1px solid #1e1e2e;border-radius:10px;
+      padding:20px;font-size:12px;line-height:1.8;white-space:pre-wrap;word-break:break-word;color:#888;
+    }
+    .copy-btn{
+      background:#13131a;border:1px solid #252530;color:#555;border-radius:8px;
+      padding:6px 14px;font-size:12px;cursor:pointer;margin-bottom:10px;transition:all .2s;
+    }
+    .copy-btn:hover{border-color:#7c6ff7;color:#9b8ff7}
+
+    /* Session end overlay */
+    .overlay{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
+      backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center;
+    }
+    .overlay.show{display:flex}
+    .overlay-card{
+      background:#13131a;border:1px solid #252530;border-radius:16px;
+      padding:32px;max-width:440px;width:90%;text-align:center;
+    }
+    .overlay-card h2{font-size:22px;font-weight:600;margin-bottom:8px}
+    .score-row{display:flex;justify-content:center;gap:20px;margin:20px 0}
+    .score-box{background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px 24px}
+    .score-val{font-size:30px;font-weight:700;color:#7c6ff7}
+    .score-key{font-size:12px;color:#444;margin-top:4px}
+    .overlay-reason{
+      text-align:left;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;
+      padding:12px;font-size:13px;line-height:1.7;margin-bottom:20px;
+      max-height:140px;overflow-y:auto;color:#666;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ SCREEN 1: START (matches NOVA design) ══ -->
+<div class="screen active" id="startScreen">
+  <div class="nova-orb"></div>
+  <div class="badge">POC · Migration Test</div>
+  <h1>NOVA Live API Test</h1>
+  <p class="sub">Verify whether <strong>gemini-3.1-flash-live-preview</strong> is a drop-in replacement for the current production model.</p>
+
+  <!-- API Key (Hidden for confidentiality) -->
+  <input type="hidden" id="apiKey" />
+
+  <!-- Topic Selection -->
+  <div class="field">
+    <label>Test Topic</label>
+    <select id="topicSelect">
+      <option value="Machine Learning basics">Machine Learning</option>
+      <option value="SQL and Databases">SQL</option>
+      <option value="Python Programming">Python</option>
+      <option value="Data Structures & Algorithms">Data Structures & Algorithms</option>
+      <option value="General Software Engineering">General SE</option>
+    </select>
+    <div class="hint">NOVA will adjust its questions to this topic.</div>
+  </div>
+
+  <!-- T2 Timer -->
+  <div class="field">
+    <label>Test Duration</label>
+    <select id="t2Select">
+      <option value="300">5 Minutes</option>
+      <option value="600">10 Minutes</option>
+      <option value="900">15 Minutes</option>
+    </select>
+  </div>
+
+  <!-- Status -->
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Idle — ready to connect</span>
+  </div>
+
+  <div class="err" id="startErr"></div>
+  <button class="btn-primary" id="startBtn">▶ Start Scenario</button>
+  <button class="btn-ghost" id="stopBtn" style="display:none" onclick="disconnect()">■ Disconnect</button>
+</div>
+
+<!-- ══ MAIN PANEL (event log / results / report) ══ -->
+<div id="mainPanel">
+  <div class="chat-header">
+    <div class="hl">
+      <div class="h-orb"></div>
+      <div>
+        <div class="h-title">NOVA Live</div>
+        <div class="h-sub" id="hSub">Scenario — model — method</div>
+      </div>
+    </div>
+    <div class="h-right">
+      <div class="scenario-pill" id="scenarioPill">LIVE</div>
+      <button class="back-btn" onclick="goBack()">← Back</button>
+    </div>
+  </div>
+
+  <div class="tabs-bar">
+    <div class="tab active" data-tab="log">📋 Event Log</div>
+    <div class="tab" data-tab="results">📊 Results</div>
+    <div class="tab" data-tab="report">📄 Report</div>
+  </div>
+
+  <!-- Log -->
+  <div class="tab-content active" id="tab-log">
+    <div class="log-area" id="logArea"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="tab-content" id="tab-results">
+    <div class="results-area">
+      <h3 style="font-size:15px;margin-bottom:14px">Test Matrix</h3>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th><th>Model</th><th>Method</th>
+              <th>WS</th><th>T1 Speaks</th><th>Conv.</th>
+              <th>T2→end_session</th><th>Scores</th><th>Close</th><th>Overall</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><b>CURRENT</b></td><td style="font-size:11px;color:#9b8ff7">3.1-flash-live</td><td style="font-size:11px">sendRealtimeInput</td>
+              <td class="rpend" id="res-ws">—</td><td class="rpend" id="res-t1">—</td><td class="rpend" id="res-conv">—</td>
+              <td class="rpend" id="res-t2">—</td><td class="rpend" id="res-scores">—</td><td class="rpend" id="res-close">—</td><td class="rpend" id="res-overall">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:20px">
+        <h4 style="font-size:13px;margin-bottom:10px;color:#555">Auto-captured Errors</h4>
+        <div id="errorList" style="font-size:12px;color:#444;font-family:monospace;background:#13131a;border:1px solid #1e1e2e;border-radius:8px;padding:12px;min-height:54px">
+          No errors yet.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report -->
+  <div class="tab-content" id="tab-report">
+    <div class="report-area">
+      <button class="copy-btn" onclick="copyReport()">📋 Copy Markdown</button>
+      <pre class="report-md" id="reportMd">Run at least one scenario to generate the report.</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Session end overlay -->
+<div class="overlay" id="endOverlay">
+  <div class="overlay-card">
+    <div style="font-size:38px;margin-bottom:10px">🎓</div>
+    <h2>Session Complete</h2>
+    <p style="font-size:13px;color:#444;margin-bottom:4px">end_session tool was called</p>
+    <div class="score-row" id="overlayScores"></div>
+    <div class="overlay-reason" id="overlayReason"></div>
+    <button class="btn-primary" onclick="document.getElementById('endOverlay').classList.remove('show')">Close</button>
+  </div>
+</div>
+
+<script type="module">
+// ═══════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════
+const MODEL_ID = 'gemini-3.1-flash-live-preview';
+const SEND_METHOD = 'sendRealtimeInput';
+
+function getSystemPrompt(durationMin, topic) {
+  return `You are NOVA, an AI examiner conducting a ${durationMin}-minute oral test on ${topic}.
+Ask the student questions to evaluate their knowledge. When you receive the termination signal at the end of the session, you MUST call the end_session tool with:
+- reason: A Markdown-formatted performance report summarising the student's answers
+- scores: An object with keys "Clarity" (max 5) and "Accuracy" (max 5), both numeric values
+Keep answers brief. Start immediately by greeting the student and asking the first question.`;
+}
+
+const TOOLS_ARRAY = [
+  { googleSearch: {} },
+  {
+    functionDeclarations: [
+      {
+        name: 'end_session',
+        description: 'Terminates the session and submits evaluation scores and feedback.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            reason: { type: 'STRING', description: 'Markdown-formatted performance report.' },
+            scores: {
+              type: 'OBJECT',
+              properties: { Clarity: { type: 'NUMBER' }, Accuracy: { type: 'NUMBER' } },
+              required: ['Clarity','Accuracy'],
+            },
+          },
+          required: ['reason','scores'],
+        },
+      },
+      {
+        name: 'report_gaming_attempt',
+        description: 'Silently reports a suspected cheating attempt. Session continues.',
+        parameters: {
+          type: 'OBJECT',
+          properties: { reason: { type: 'STRING', description: 'Description of the violation.' } },
+          required: ['reason'],
+        },
+      },
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let session = null, inputCtx = null, outputCtx = null;
+let workletNode = null, micStream = null;
+let t2Handle = null, nextPlayTime = 0;
+let currentTopic = 'Machine Learning basics';
+let t1Fired = false, t2Fired = false;
+let toolRetryCount = {}, sessionResumptionHandle = null;
+const results = { ws:null, t1:null, conv:null, t2:null, scores:null, close:null, errors:[] };
+
+// ═══════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const logArea = $('logArea');
+
+function log(msg, level='info') {
+  const time = new Date().toLocaleTimeString([],{hour12:false});
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="log-time">${time}</span><span class="log-level level-${level}">${level.toUpperCase()}</span><span class="log-msg">${esc(String(typeof msg==='object'?JSON.stringify(msg,null,2):msg))}</span>`;
+  logArea.appendChild(el);
+  logArea.scrollTop = logArea.scrollHeight;
+  if (level === 'error') {
+    const el2 = $('errorList');
+    if (el2.textContent === 'No errors yet.') el2.textContent='';
+    el2.textContent += `[${currentScenario}] ${msg}\n`;
+    results[currentScenario].errors.push(String(msg));
+  }
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setStatus(state, text) {
+  $('statusDot').className = 'status-dot ' + (state||'');
+  $('statusText').textContent = text;
+}
+
+function setResult(check, pass) {
+  const cell = $(`res-${check}`);
+  if (!cell) return;
+  results[check] = pass;
+  cell.textContent = pass ? '✅' : '❌';
+  cell.className = pass ? 'rpass' : 'rfail';
+  updateOverall(); updateReport();
+}
+
+function updateOverall() {
+  const r = results;
+  const vals = [r.ws, r.t1, r.t2, r.scores, r.close].filter(v => v !== null);
+  const cell = $(`res-overall`);
+  if (!vals.length) { cell.textContent='—'; cell.className='rpend'; return; }
+  const ok = vals.every(Boolean);
+  cell.textContent = ok ? '✅ PASS' : '❌ FAIL';
+  cell.className = ok ? 'rpass' : 'rfail';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AUDIO HELPERS
+// ═══════════════════════════════════════════════════════════
+function f32ToI16(f32) {
+  const i16 = new Int16Array(f32.length);
+  for (let i=0;i<f32.length;i++) { const s=Math.max(-1,Math.min(1,f32[i])); i16[i]=s<0?s*32768:s*32767; }
+  return i16;
+}
+function bufToB64(buf) {
+  const b = new Uint8Array(buf); let s='';
+  for (let i=0;i<b.byteLength;i++) s+=String.fromCharCode(b[i]);
+  return btoa(s);
+}
+function b64ToBuf(b64) {
+  const bin=atob(b64), buf=new ArrayBuffer(bin.length), v=new Uint8Array(buf);
+  for(let i=0;i<bin.length;i++) v[i]=bin.charCodeAt(i);
+  return buf;
+}
+function i16ToF32(i16) {
+  const f=new Float32Array(i16.length);
+  for(let i=0;i<i16.length;i++) f[i]=i16[i]/32768;
+  return f;
+}
+function playChunk(b64) {
+  if (!outputCtx) { outputCtx=new AudioContext({sampleRate:24000}); nextPlayTime=0; }
+  if (outputCtx.state==='suspended') outputCtx.resume();
+  const buf=b64ToBuf(b64), i16=new Int16Array(buf), f32=i16ToF32(i16);
+  const ab=outputCtx.createBuffer(1,f32.length,24000);
+  ab.copyToChannel(f32,0);
+  const src=outputCtx.createBufferSource();
+  src.buffer=ab; src.connect(outputCtx.destination);
+  const now=outputCtx.currentTime, startAt=Math.max(now,nextPlayTime);
+  src.start(startAt); nextPlayTime=startAt+ab.duration;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SEND HELPERS
+// ═══════════════════════════════════════════════════════════
+function sendText(text, method) {
+  if (!session) { log('No active session','error'); return; }
+  log(`Sending [${method}]: "${text}"`, 'info');
+  try {
+    if (method === 'sendClientContent') {
+      session.sendClientContent({ turns:[{role:'user',parts:[{text}]}], turnComplete:true });
+    } else {
+      session.sendRealtimeInput({ text });
+    }
+  } catch(e) { log(`sendText error: ${e.message}`, 'error'); }
+}
+
+function sendToolResponse(id, name, response) {
+  if (!session) return;
+  try {
+    if (typeof session.sendToolResponse === 'function') {
+      session.sendToolResponse({ functionResponses:[{id,name,response}] });
+    } else {
+      session.sendClientContent({ toolResponse:{ functionResponses:[{id,name,response:'ok'}] } });
+    }
+  } catch(e) { log(`sendToolResponse error: ${e.message}`, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOOL CALLS
+// ═══════════════════════════════════════════════════════════
+function handleTool(name, id, args) {
+  log(`🔧 Tool: ${name}  id=${id}`, 'tool');
+  if (name === 'end_session') {
+    const {reason, scores} = args||{};
+    const ok = typeof reason==='string' && reason.length>0 && scores &&
+                typeof scores.Clarity==='number' && typeof scores.Accuracy==='number';
+    if (!ok) {
+      toolRetryCount[id]=(toolRetryCount[id]||0)+1;
+      if (toolRetryCount[id]<=2) { sendToolResponse(id,name,{error:'Invalid args'}); return; }
+      log('Max retries reached','error'); setResult(currentScenario,'t2',false); setResult(currentScenario,'scores',false); disconnect(); return;
+    }
+    log(`✅ end_session — Clarity:${scores.Clarity} Accuracy:${scores.Accuracy}`, 'success');
+    setResult(currentScenario,'t2',true); setResult(currentScenario,'scores',true);
+    sendToolResponse(id,name,{result:{object_value:'Acknowledged.'}});
+    showEndOverlay(reason,scores);
+    setTimeout(()=>disconnect(true),1500);
+  } else if (name==='report_gaming_attempt') {
+    log(`🚨 Gaming attempt: ${args?.reason}`, 'warn');
+    sendToolResponse(id,name,{result:{object_value:'Acknowledged.'}});
+  } else {
+    sendToolResponse(id,name,{result:{object_value:'Unknown.'}});
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MESSAGE HANDLER
+// ═══════════════════════════════════════════════════════════
+function handleMsg(msg) {
+  if (msg.sessionResumptionUpdate) {
+    const h = msg.sessionResumptionUpdate.newHandle||msg.sessionResumptionUpdate.resumptionHandle;
+    if (h) { sessionResumptionHandle=h; log(`Session handle: ${h.substring(0,20)}…`,'info'); }
+  }
+  if (msg.goAway) log('⚠️ GoAway received','warn');
+  if (msg.serverContent?.interrupted) { nextPlayTime=0; }
+  if (msg.serverContent?.modelTurn?.parts) {
+    for (const part of msg.serverContent.modelTurn.parts) {
+      if (part.inlineData?.mimeType?.startsWith('audio')) {
+        playChunk(part.inlineData.data);
+        if (!results.t1) { setResult('t1',true); setResult('conv',true); log('✅ T1: NOVA spoke','success'); }
+      }
+      if (part.text) {
+        log(`📝 ${part.text}`,'info');
+        if (!results.t1 && part.text.length>5) { setResult('t1',true); setResult('conv',true); }
+      }
+      if (part.functionCall) handleTool(part.functionCall.name, part.functionCall.id, part.functionCall.args);
+    }
+  }
+  if (msg.toolCall?.functionCalls) msg.toolCall.functionCalls.forEach(fc=>handleTool(fc.name,fc.id,fc.args));
+  if (msg.serverContent?.turnComplete) log('Turn complete','info');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MICROPHONE
+// ═══════════════════════════════════════════════════════════
+async function startMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true,autoGainControl:true,noiseSuppression:true}});
+    inputCtx = new AudioContext({sampleRate:16000});
+    await inputCtx.audioWorklet.addModule('./audio-processor.js');
+    const src = inputCtx.createMediaStreamSource(micStream);
+    workletNode = new AudioWorkletNode(inputCtx,'audio-processor');
+    src.connect(workletNode);
+    workletNode.port.onmessage = e => {
+      if (!session) return;
+      try { session.sendRealtimeInput({audio:{mimeType:'audio/pcm;rate=16000',data:bufToB64(f32ToI16(e.data).buffer)}}); } catch(_){}
+    };
+    log('🎙️ Mic started','success');
+  } catch(e) { log(`Mic: ${e.message} — continuing without mic`,'warn'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONNECT
+// ═══════════════════════════════════════════════════════════
+async function connect() {
+  const apiKey = $('apiKey').value.trim();
+  if (!apiKey) { $('startErr').textContent='API key required'; return; }
+  $('startErr').textContent='';
+  const topic = $('topicSelect').value;
+  const t2ValSecs = parseInt($('t2Select').value);
+  const t2Delay = t2ValSecs * 1000;
+  const durationMin = Math.round(t2ValSecs / 60);
+  const currentPrompt = getSystemPrompt(durationMin, topic);
+
+  setStatus('connecting','Connecting…');
+  log(`━━━ Topic: ${topic} (${durationMin} min) ━━━`,'info');
+  t1Fired=false; t2Fired=false; toolRetryCount={}; nextPlayTime=0;
+
+  let GoogleGenAI;
+  try {
+    const mod = await import('https://esm.run/@google/genai');
+    GoogleGenAI = mod.GoogleGenAI;
+  } catch(e) { log(`SDK load error: ${e.message}`,'error'); setStatus('error','SDK failed'); return; }
+
+  const genAI = new GoogleGenAI({ apiKey, httpOptions:{apiVersion:'v1alpha'} });
+
+  try {
+    session = await genAI.live.connect({
+      model: MODEL_ID,
+      config: {
+        systemInstruction: { parts:[{text:currentPrompt}] },
+        responseModalities: ['AUDIO'],
+        speechConfig: { voiceConfig:{ prebuiltVoiceConfig:{voiceName:'Puck'} } },
+        tools: TOOLS_ARRAY,
+        sessionResumption: {},
+        contextWindowCompression: { slidingWindow:{} },
+      },
+      callbacks: {
+        onopen: async () => {
+          log('✅ WebSocket opened','success');
+          setStatus('connected','Connected');
+          setResult('ws',true);
+          $('startBtn').disabled=true;
+          $('stopBtn').style.display='block';
+          // Switch to main panel
+          $('startScreen').style.display='none';
+          const mp=$('mainPanel'); mp.classList.add('active');
+          $('hSub').textContent=`Topic: ${topic} · ${durationMin} Minutes`;
+          $('scenarioPill').textContent=`LIVE`;
+          startMic();
+          setTimeout(()=>{ if(!t1Fired){t1Fired=true; log('→ T1: sending auto-start…','info'); sendText('The student is ready. Introduce yourself and begin.',SEND_METHOD);} },1000);
+          t2Handle=setTimeout(()=>{ if(!t2Fired){t2Fired=true; log(`→ T2: termination signal…`,'warn'); sendText('Please wrap up the session now and call end_session.',SEND_METHOD);} },t2Delay);
+        },
+        onmessage: handleMsg,
+        onclose: ev => {
+          log(`WS closed — code:${ev.code} reason:"${ev.reason}"`,ev.code===1000?'info':'warn');
+          setStatus('','Disconnected');
+          setResult('close',ev.code===1000||ev.code===1001);
+          cleanup();
+        },
+        onerror: err => { log(`WS error: ${JSON.stringify(err)}`,'error'); setStatus('error','Error'); if(!results.ws) setResult('ws',false); },
+      },
+    });
+  } catch(e) { log(`connect() error: ${e.message}`,'error'); setStatus('error','Failed'); setResult(currentScenario,'ws',false); cleanup(); }
+}
+
+window.disconnect = function(clean=false) {
+  if(session){try{session.close();}catch(_){} session=null;}
+  cleanup();
+};
+
+function cleanup() {
+  clearTimeout(t2Handle);
+  if(workletNode){workletNode.disconnect();workletNode=null;}
+  if(inputCtx){inputCtx.close();inputCtx=null;}
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
+  $('startBtn').disabled=false;
+  $('stopBtn').style.display='none';
+  setStatus('','Idle');
+  updateReport();
+}
+
+window.goBack = function() {
+  $('mainPanel').classList.remove('active');
+  $('startScreen').style.display='flex';
+};
+
+// ═══════════════════════════════════════════════════════════
+//  END OVERLAY
+// ═══════════════════════════════════════════════════════════
+function showEndOverlay(reason, scores) {
+  $('overlayScores').innerHTML = Object.entries(scores).map(([k,v])=>
+    `<div class="score-box"><div class="score-val">${v}</div><div class="score-key">${k}</div></div>`).join('');
+  $('overlayReason').textContent = reason;
+  $('endOverlay').classList.add('show');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  REPORT
+// ═══════════════════════════════════════════════════════════
+function r2s(v){ return v===null?'—':v?'Pass':'Fail'; }
+function updateReport() {
+  const date=new Date().toISOString().split('T')[0];
+  const errLog=results.errors.map(e=>`[ERR] ${e}`).join('\n')||'None';
+  const row=`| LIVE | ${r2s(results.ws)} | ${r2s(results.t1)} | ${r2s(results.conv)} | ${r2s(results.t2)} | ${r2s(results.scores)} | ${r2s(results.close)} |`;
+  const rec=()=>{
+    if(results.t1&&results.t2) return '- [x] Test successful — model response and termination handled correctly.';
+    return '- [ ] Needs further investigation — see errors log';
+  };
+  $('reportMd').textContent=`# Gemini Live Test Results: ${$('topicSelect').value}
+
+**Date:** ${date}  **Model:** ${MODEL_ID}
+
+| Sc | WS | T1 | Conv | T2→end | Scores | Close |
+|---|---|---|---|---|---|---|
+${row}
+
+## Console Errors
+\`\`\`
+${errLog}
+\`\`\`
+
+## Recommendation
+${rec()}`;
+}
+
+window.copyReport = ()=>navigator.clipboard.writeText($('reportMd').textContent);
+
+// ═══════════════════════════════════════════════════════════
+//  SCENARIO SELECTION
+// ═══════════════════════════════════════════════════════════
+// (Scenario Selection removed)
+
+// Main tabs
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    tab.classList.add('active');
+    $('tab-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+
+// Start
+$('startBtn').addEventListener('click',connect);
+
+// ═══════════════════════════════════════════════════════════
+//  AUTO-LOAD API KEY (SILENT)
+// ═══════════════════════════════════════════════════════════
+(async()=>{
+  try {
+    const res=await fetch('/config');
+    const {apiKey}=await res.json();
+    if(apiKey){ $('apiKey').value=apiKey; log('✅ API key loaded securely from .env', 'success'); }
+    else { log('⚠️ No API key found in server .env', 'warn'); }
+  } catch(_){ log('⚠️ Failed to load API key from /config', 'warn'); }
+})();
+
+updateReport();
+</script>
+</body>
+</html>
