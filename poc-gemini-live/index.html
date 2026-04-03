@@ -1,714 +1,2219 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NOVA — Gemini Live Migration POC</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{
-      font-family:system-ui,sans-serif;
-      background:#0a0a0f;
-      color:#e8e8f0;
-      min-height:100vh;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
     }
 
-    /* ── SHARED ── */
-    .screen{width:100%;max-width:480px;padding:36px 28px;display:none;flex-direction:column;gap:20px;align-items:stretch}
-    .screen.active{display:flex}
-
-    .nova-orb{
-      width:60px;height:60px;border-radius:50%;
-      background:radial-gradient(circle at 38% 38%,#a89af7,#6c5ce7 55%,#3d2fa0);
-      margin:0 auto 4px;flex-shrink:0;
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0a0a0f;
+      color: #e8e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
-    h1{font-size:26px;font-weight:600;letter-spacing:-0.5px;text-align:center}
-    .sub{font-size:14px;color:#555;text-align:center;line-height:1.5}
-
-    .field{display:flex;flex-direction:column;gap:7px}
-    .field label{font-size:11px;font-weight:600;color:#666;letter-spacing:0.07em;text-transform:uppercase}
-    .field input,.field select{
-      background:#13131a;border:1px solid #252530;border-radius:10px;
-      color:#e8e8f0;font-family:inherit;font-size:14px;padding:11px 14px;
-      outline:none;transition:border-color .2s;
-    }
-    .field input:focus,.field select:focus{border-color:#7c6ff7}
-    .field select option{background:#13131a}
-    .field .hint{font-size:11px;color:#444;line-height:1.5}
-
-    .key-row{display:flex;gap:8px;align-items:center}
-    .key-row input{flex:1}
-    .key-eye{
-      background:#13131a;border:1px solid #252530;border-radius:10px;
-      color:#555;font-size:13px;padding:11px 13px;cursor:pointer;
-      white-space:nowrap;transition:border-color .2s;
-    }
-    .key-eye:hover{border-color:#7c6ff7;color:#9b8ff7}
-
-    .badge{
-      font-size:11px;font-weight:600;background:#1a1a2e;border:1px solid #2a2a4a;
-      color:#7c6ff7;padding:3px 12px;border-radius:99px;align-self:center;letter-spacing:0.05em;
+    .screen {
+      width: 100%;
+      max-width: 480px;
+      padding: 36px 28px;
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+      align-items: stretch
     }
 
-    .btn-primary{
-      background:#7c6ff7;color:#fff;border:none;border-radius:12px;
-      font-family:inherit;font-size:15px;font-weight:600;padding:14px;
-      cursor:pointer;transition:opacity .2s,transform .1s;width:100%;
+    .screen.active {
+      display: flex
     }
-    .btn-primary:hover{opacity:.9;transform:translateY(-1px)}
-    .btn-primary:disabled{opacity:.35;cursor:not-allowed;transform:none}
 
-    .btn-ghost{
-      background:transparent;color:#555;border:1px solid #252530;border-radius:10px;
-      font-family:inherit;font-size:13px;padding:9px 18px;cursor:pointer;
-      transition:all .2s;align-self:center;
+    .nova-orb {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 38%, #a89af7, #6c5ce7 55%, #3d2fa0);
+      margin: 0 auto 4px;
+      flex-shrink: 0;
     }
-    .btn-ghost:hover{border-color:#7c6ff7;color:#9b8ff7}
 
-    .err{font-size:13px;color:#ef4444;text-align:center;min-height:18px}
+    h1 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      text-align: center
+    }
 
-    /* ── SCENARIO CARDS ── */
-    .scenario-grid{display:flex;flex-direction:column;gap:8px}
-    .scenario-card{
-      background:#13131a;border:1px solid #252530;border-radius:12px;
-      padding:14px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;
-      transition:border-color .2s,background .2s;
+    .sub {
+      font-size: 14px;
+      color: #555;
+      text-align: center;
+      line-height: 1.5
     }
-    .scenario-card:hover{border-color:#7c6ff7;background:#17172a}
-    .scenario-card.selected{border-color:#7c6ff7;background:#1a1730}
-    .sc-tag{
-      font-size:12px;font-weight:700;width:26px;height:26px;border-radius:8px;
-      background:#1e1a3a;color:#9b8ff7;border:1px solid #3a336a;
-      display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;
-    }
-    .sc-info{flex:1}
-    .sc-label{font-size:14px;font-weight:500;color:#e8e8f0;margin-bottom:3px}
-    .sc-sub{font-size:12px;color:#555}
-    .sc-badge{
-      font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;
-      align-self:center;flex-shrink:0;
-    }
-    .sc-badge.old{background:#1a2420;color:#22c55e;border:1px solid #1e3a2e}
-    .sc-badge.new{background:#1e1a3a;color:#7c6ff7;border:1px solid #3a336a}
 
-    /* ── TIMER ROW ── */
-    .t2-row{display:flex;align-items:center;gap:12px}
-    .t2-row input[type=range]{flex:1;accent-color:#7c6ff7;cursor:pointer}
-    .t2-val{font-size:15px;font-weight:600;color:#7c6ff7;min-width:52px;text-align:right}
-
-    /* ── STATUS PILL ── */
-    .status-pill{
-      display:flex;align-items:center;gap:9px;
-      background:#13131a;border:1px solid #252530;border-radius:10px;padding:10px 14px;
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 7px
     }
-    .status-dot{width:8px;height:8px;border-radius:50%;background:#333;flex-shrink:0}
-    .status-dot.connected{background:#22c55e;box-shadow:0 0 6px #22c55e;animation:dotPulse 2s infinite}
-    .status-dot.connecting{background:#eab308;animation:dotPulse 1s infinite}
-    .status-dot.error{background:#ef4444}
-    @keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #666;
+      letter-spacing: 0.07em;
+      text-transform: uppercase
+    }
+
+    .field input,
+    .field select {
+      background: #13131a;
+      border: 1px solid #252530;
+      border-radius: 10px;
+      color: #e8e8f0;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 11px 14px;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: #7c6ff7
+    }
+
+    .field select option {
+      background: #13131a
+    }
+
+    .field .hint {
+      font-size: 11px;
+      color: #444;
+      line-height: 1.5
+    }
+
+    .key-row {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+
+    .key-row input {
+      flex: 1
+    }
+
+    .key-eye {
+      background: #13131a;
+      border: 1px solid #252530;
+      border-radius: 10px;
+      color: #555;
+      font-size: 13px;
+      padding: 11px 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color .2s;
+    }
+
+    .key-eye:hover {
+      border-color: #7c6ff7;
+      color: #9b8ff7
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      color: #7c6ff7;
+      padding: 3px 12px;
+      border-radius: 99px;
+      align-self: center;
+      letter-spacing: 0.05em;
+    }
+
+    .btn-primary {
+      background: #7c6ff7;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 14px;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      width: 100%;
+    }
+
+    .btn-primary:hover {
+      opacity: .9;
+      transform: translateY(-1px)
+    }
+
+    .btn-primary:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+      transform: none
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: #555;
+      border: 1px solid #252530;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 9px 18px;
+      cursor: pointer;
+      transition: all .2s;
+      align-self: center;
+    }
+
+    .btn-ghost:hover {
+      border-color: #7c6ff7;
+      color: #9b8ff7
+    }
+
+    .err {
+      font-size: 13px;
+      color: #ef4444;
+      text-align: center;
+      min-height: 18px
+    }
+
+    .t2-row {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .t2-row input[type=range] {
+      flex: 1;
+      accent-color: #7c6ff7;
+      cursor: pointer
+    }
+
+    .t2-val {
+      font-size: 15px;
+      font-weight: 600;
+      color: #7c6ff7;
+      min-width: 52px;
+      text-align: right
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: #13131a;
+      border: 1px solid #252530;
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #333;
+      flex-shrink: 0
+    }
+
+    .status-dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+      animation: dotPulse 2s infinite
+    }
+
+    .status-dot.connecting {
+      background: #eab308;
+      animation: dotPulse 1s infinite
+    }
+
+    .status-dot.handoff {
+      background: #f97316;
+      box-shadow: 0 0 6px #f97316;
+      animation: dotPulse .6s infinite
+    }
+
+    .status-dot.error {
+      background: #ef4444
+    }
+
+    @keyframes dotPulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .35
+      }
+    }
+
+    /* ── HANDOFF BANNER ── */
+    .handoff-banner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(90deg, #1a0f00, #2a1800, #1a0f00);
+      border-bottom: 1px solid #f9731640;
+      color: #f97316;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      padding: 7px 20px;
+      z-index: 200;
+      letter-spacing: 0.04em;
+    }
+
+    .handoff-banner.show {
+      display: block
+    }
+
+    .handoff-banner .hb-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .hb-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid #f9731640;
+      border-top-color: #f97316;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
 
     /* ── MAIN PANEL ── */
-    #mainPanel{
-      display:none;
-      width:100%;max-width:640px;height:100vh;
-      flex-direction:column;
+    #mainPanel {
+      display: none;
+      width: 100%;
+      max-width: 640px;
+      height: 100vh;
+      flex-direction: column;
     }
-    #mainPanel.active{display:flex}
 
-    .chat-header{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 20px;border-bottom:1px solid #1a1a28;
+    #mainPanel.active {
+      display: flex
     }
-    .hl{display:flex;align-items:center;gap:10px}
-    .h-orb{
-      width:32px;height:32px;border-radius:50%;
-      background:radial-gradient(circle at 38% 38%,#a89af7,#6c5ce7 55%,#3d2fa0);
-    }
-    .h-title{font-size:15px;font-weight:600}
-    .h-sub{font-size:11px;color:#444;margin-top:1px}
-    .h-right{display:flex;align-items:center;gap:8px}
-    .scenario-pill{
-      font-size:11px;font-weight:600;background:#1e1a3a;color:#9b8ff7;
-      border:1px solid #3a336a;padding:3px 10px;border-radius:99px;
-    }
-    .back-btn{
-      background:#13131a;border:1px solid #252530;border-radius:8px;
-      color:#555;font-size:12px;padding:5px 12px;cursor:pointer;
-      transition:all .2s;
-    }
-    .back-btn:hover{border-color:#7c6ff7;color:#9b8ff7}
 
-    /* Tabs */
-    .tabs-bar{display:flex;border-bottom:1px solid #1a1a28;padding:0 20px}
-    .tab{
-      padding:12px 16px;font-size:13px;cursor:pointer;
-      border-bottom:2px solid transparent;color:#444;transition:all .2s;
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid #1a1a28;
     }
-    .tab.active{color:#9b8ff7;border-bottom-color:#7c6ff7}
-    .tab:hover{color:#e8e8f0}
-    .tab-content{display:none;flex:1;overflow:hidden;flex-direction:column}
-    .tab-content.active{display:flex}
 
-    /* Log */
-    .log-area{
-      flex:1;overflow-y:auto;padding:14px 20px;
-      font-family:'Fira Code',monospace;font-size:12px;line-height:1.7;
+    .hl {
+      display: flex;
+      align-items: center;
+      gap: 10px
     }
-    .log-entry{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.02)}
-    .log-time{color:#333;flex-shrink:0}
-    .log-level{
-      flex-shrink:0;font-weight:700;font-size:10px;
-      padding:1px 6px;border-radius:4px;align-self:flex-start;margin-top:2px;
-    }
-    .level-info{background:rgba(124,111,247,.15);color:#9b8ff7}
-    .level-success{background:rgba(34,197,94,.15);color:#22c55e}
-    .level-warn{background:rgba(234,179,8,.15);color:#eab308}
-    .level-error{background:rgba(239,68,68,.15);color:#ef4444}
-    .level-tool{background:rgba(168,85,247,.15);color:#c084fc}
-    .log-msg{flex:1;color:#aaa;word-break:break-all;white-space:pre-wrap}
 
-    /* Results */
-    .results-area{flex:1;overflow-y:auto;padding:20px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th{
-      text-align:left;padding:9px 13px;background:#13131a;
-      border:1px solid #1e1e2e;font-size:10px;text-transform:uppercase;
-      letter-spacing:.06em;color:#444;
+    .h-orb {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 38%, #a89af7, #6c5ce7 55%, #3d2fa0);
     }
-    td{padding:9px 13px;border:1px solid #1e1e2e}
-    tr:hover td{background:rgba(255,255,255,.01)}
-    .rpass{color:#22c55e;font-weight:600}
-    .rfail{color:#ef4444;font-weight:600}
-    .rpend{color:#333}
 
-    /* Report */
-    .report-area{flex:1;overflow-y:auto;padding:20px}
-    pre.report-md{
-      background:#13131a;border:1px solid #1e1e2e;border-radius:10px;
-      padding:20px;font-size:12px;line-height:1.8;white-space:pre-wrap;word-break:break-word;color:#888;
+    .h-title {
+      font-size: 15px;
+      font-weight: 600
     }
-    .copy-btn{
-      background:#13131a;border:1px solid #252530;color:#555;border-radius:8px;
-      padding:6px 14px;font-size:12px;cursor:pointer;margin-bottom:10px;transition:all .2s;
-    }
-    .copy-btn:hover{border-color:#7c6ff7;color:#9b8ff7}
 
-    /* Session end overlay */
-    .overlay{
-      display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
-      backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center;
+    .h-sub {
+      font-size: 11px;
+      color: #444;
+      margin-top: 1px
     }
-    .overlay.show{display:flex}
-    .overlay-card{
-      background:#13131a;border:1px solid #252530;border-radius:16px;
-      padding:32px;max-width:440px;width:90%;text-align:center;
+
+    .h-right {
+      display: flex;
+      align-items: center;
+      gap: 8px
     }
-    .overlay-card h2{font-size:22px;font-weight:600;margin-bottom:8px}
-    .score-row{display:flex;justify-content:center;gap:20px;margin:20px 0}
-    .score-box{background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px 24px}
-    .score-val{font-size:30px;font-weight:700;color:#7c6ff7}
-    .score-key{font-size:12px;color:#444;margin-top:4px}
-    .overlay-reason{
-      text-align:left;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;
-      padding:12px;font-size:13px;line-height:1.7;margin-bottom:20px;
-      max-height:140px;overflow-y:auto;color:#666;
+
+    .scenario-pill {
+      font-size: 11px;
+      font-weight: 600;
+      background: #1e1a3a;
+      color: #9b8ff7;
+      border: 1px solid #3a336a;
+      padding: 3px 10px;
+      border-radius: 99px;
+    }
+
+    /* WS Session counter badge */
+    .ws-counter {
+      font-size: 10px;
+      font-weight: 700;
+      background: #1a1200;
+      color: #f97316;
+      border: 1px solid #f9731630;
+      padding: 2px 8px;
+      border-radius: 99px;
+      display: none;
+    }
+
+    .ws-counter.show {
+      display: block
+    }
+
+    .session-timer {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      color: #7c6ff7;
+      background: rgba(124, 111, 247, 0.1);
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(124, 111, 247, 0.2);
+      min-width: 65px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .session-timer.warning {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.2);
+      animation: flash 1s infinite alternate;
+    }
+
+    @keyframes flash {
+      from {
+        opacity: 1
+      }
+
+      to {
+        opacity: .5
+      }
+    }
+
+    .back-btn {
+      background: #13131a;
+      border: 1px solid #252530;
+      border-radius: 8px;
+      color: #555;
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+
+    .back-btn:hover {
+      border-color: #7c6ff7;
+      color: #9b8ff7
+    }
+
+    .tabs-bar {
+      display: flex;
+      border-bottom: 1px solid #1a1a28;
+      padding: 0 20px
+    }
+
+    .tab {
+      padding: 12px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      color: #444;
+      transition: all .2s;
+    }
+
+    .tab.active {
+      color: #9b8ff7;
+      border-bottom-color: #7c6ff7
+    }
+
+    .tab:hover {
+      color: #e8e8f0
+    }
+
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow: hidden;
+      flex-direction: column
+    }
+
+    .tab-content.active {
+      display: flex
+    }
+
+    .log-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 20px;
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 10px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, .02)
+    }
+
+    .log-time {
+      color: #333;
+      flex-shrink: 0
+    }
+
+    .log-level {
+      flex-shrink: 0;
+      font-weight: 700;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      align-self: flex-start;
+      margin-top: 2px;
+    }
+
+    .level-info {
+      background: rgba(124, 111, 247, .15);
+      color: #9b8ff7
+    }
+
+    .level-success {
+      background: rgba(34, 197, 94, .15);
+      color: #22c55e
+    }
+
+    .level-warn {
+      background: rgba(234, 179, 8, .15);
+      color: #eab308
+    }
+
+    .level-error {
+      background: rgba(239, 68, 68, .15);
+      color: #ef4444
+    }
+
+    .level-tool {
+      background: rgba(168, 85, 247, .15);
+      color: #c084fc
+    }
+
+    .level-handoff {
+      background: rgba(249, 115, 22, .15);
+      color: #f97316
+    }
+
+    .log-msg {
+      flex: 1;
+      color: #aaa;
+      word-break: break-all;
+      white-space: pre-wrap
+    }
+
+    .results-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px
+    }
+
+    th {
+      text-align: left;
+      padding: 9px 13px;
+      background: #13131a;
+      border: 1px solid #1e1e2e;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #444;
+    }
+
+    td {
+      padding: 9px 13px;
+      border: 1px solid #1e1e2e
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, .01)
+    }
+
+    .rpass {
+      color: #22c55e;
+      font-weight: 600
+    }
+
+    .rfail {
+      color: #ef4444;
+      font-weight: 600
+    }
+
+    .rpend {
+      color: #333
+    }
+
+    .report-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px
+    }
+
+    pre.report-md {
+      background: #13131a;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+      padding: 20px;
+      font-size: 12px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #888;
+    }
+
+    .copy-btn {
+      background: #13131a;
+      border: 1px solid #252530;
+      color: #555;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: all .2s;
+    }
+
+    .copy-btn:hover {
+      border-color: #7c6ff7;
+      color: #9b8ff7
+    }
+
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .75);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay.show {
+      display: flex
+    }
+
+    .overlay-card {
+      background: #13131a;
+      border: 1px solid #252530;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 440px;
+      width: 90%;
+      text-align: center;
+    }
+
+    .overlay-card h2 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px
+    }
+
+    .score-row {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin: 20px 0
+    }
+
+    .score-box {
+      background: #0a0a0f;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+      padding: 14px 24px
+    }
+
+    .score-val {
+      font-size: 30px;
+      font-weight: 700;
+      color: #7c6ff7
+    }
+
+    .score-key {
+      font-size: 12px;
+      color: #444;
+      margin-top: 4px
+    }
+
+    .overlay-reason {
+      text-align: left;
+      background: #0a0a0f;
+      border: 1px solid #1e1e2e;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.7;
+      margin-bottom: 20px;
+      max-height: 140px;
+      overflow-y: auto;
+      color: #666;
+    }
+
+    .eval-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 99px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .eval-pass {
+      background: rgba(34, 197, 94, .15);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, .3)
+    }
+
+    .eval-fail {
+      background: rgba(239, 68, 68, .15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, .3)
+    }
+
+    .save-status {
+      font-size: 11px;
+      color: #666;
+      margin-top: 10px
+    }
+
+    /* Transcript tab */
+    .transcript-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px
+    }
+
+    .tx-entry {
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      background: #13131a;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+    }
+
+    .tx-entry.nova {
+      border-left: 3px solid #7c6ff7
+    }
+
+    .tx-entry.student {
+      border-left: 3px solid #22c55e
+    }
+
+    .tx-entry.system {
+      border-left: 3px solid #f97316;
+      opacity: .6
+    }
+
+    .tx-role {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      margin-bottom: 4px
+    }
+
+    .tx-entry.nova .tx-role {
+      color: #9b8ff7
+    }
+
+    .tx-entry.student .tx-role {
+      color: #22c55e
+    }
+
+    .tx-entry.system .tx-role {
+      color: #f97316
+    }
+
+    .tx-text {
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.6
+    }
+
+    .tx-time {
+      font-size: 10px;
+      color: #333;
+      margin-top: 4px
+    }
+
+    /* ── PRE-END "GENERATING REPORT" OVERLAY ── */
+    .preend-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0);
+      z-index: 90;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preend-overlay.show {
+      display: flex;
+      animation: peFadeIn .7s ease forwards;
+    }
+
+    @keyframes peFadeIn {
+      from {
+        background: rgba(0, 0, 0, 0);
+        backdrop-filter: blur(0px)
+      }
+
+      to {
+        background: rgba(0, 0, 0, .85);
+        backdrop-filter: blur(8px)
+      }
+    }
+
+    .preend-card {
+      background: #0d0d14;
+      border: 1px solid #252535;
+      border-radius: 22px;
+      padding: 40px 36px;
+      max-width: 390px;
+      width: 90%;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      animation: peSlideUp .6s cubic-bezier(.22, 1, .36, 1) forwards;
+    }
+
+    @keyframes peSlideUp {
+      from {
+        transform: translateY(28px);
+        opacity: 0
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1
+      }
+    }
+
+    /* Rotating conic border */
+    .preend-card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 23px;
+      background: conic-gradient(from var(--a, 0deg),
+          transparent 60%, #7c6ff770 80%, #a89af790 90%, transparent);
+      animation: conic 2.5s linear infinite;
+      z-index: -1;
+    }
+
+    @property --a {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false
+    }
+
+    @keyframes conic {
+      to {
+        --a: 360deg
+      }
+    }
+
+    .pe-orb {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 38%, #a89af7, #6c5ce7 55%, #3d2fa0);
+      margin: 0 auto 18px;
+      animation: peOrb 1.8s ease-in-out infinite alternate;
+      box-shadow: 0 0 36px #7c6ff740;
+    }
+
+    @keyframes peOrb {
+      from {
+        transform: scale(1);
+        box-shadow: 0 0 24px #7c6ff730
+      }
+
+      to {
+        transform: scale(1.08);
+        box-shadow: 0 0 56px #7c6ff770
+      }
+    }
+
+    .pe-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #e8e8f0;
+      margin-bottom: 5px
+    }
+
+    .pe-sub {
+      font-size: 13px;
+      color: #444;
+      margin-bottom: 24px;
+      line-height: 1.5
+    }
+
+    .pe-dots span {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #7c6ff7;
+      margin: 0 3px;
+      animation: peDot 1.1s ease-in-out infinite;
+    }
+
+    .pe-dots span:nth-child(2) {
+      animation-delay: .18s
+    }
+
+    .pe-dots span:nth-child(3) {
+      animation-delay: .36s
+    }
+
+    @keyframes peDot {
+
+      0%,
+      80%,
+      100% {
+        transform: scale(.55);
+        opacity: .3
+      }
+
+      40% {
+        transform: scale(1);
+        opacity: 1
+      }
+    }
+
+    .pe-bar-track {
+      width: 100%;
+      height: 3px;
+      background: #1a1a28;
+      border-radius: 99px;
+      margin-top: 22px;
+      overflow: hidden;
+    }
+
+    .pe-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #6c5ce7, #a89af7);
+      width: 0%;
+      transition: width 1s ease;
+    }
+
+    .pe-steps {
+      margin-top: 18px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 9px
+    }
+
+    .pe-step {
+      font-size: 12px;
+      color: #2a2a3a;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      transition: color .5s
+    }
+
+    .pe-step.active {
+      color: #9b8ff7
+    }
+
+    .pe-step.done {
+      color: #22c55e
+    }
+
+    .pe-step-icon {
+      width: 14px;
+      text-align: center;
+      flex-shrink: 0;
+      font-size: 11px
+    }
+
+    .pe-countdown {
+      position: absolute;
+      bottom: 14px;
+      right: 18px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #2a2a3a;
+      font-variant-numeric: tabular-nums;
     }
   </style>
 </head>
+
 <body>
 
-<!-- ══ SCREEN 1: START (matches NOVA design) ══ -->
-<div class="screen active" id="startScreen">
-  <div class="nova-orb"></div>
-  <div class="badge">POC · Migration Test</div>
-  <h1>NOVA Live API Test</h1>
-  <p class="sub">Verify whether <strong>gemini-3.1-flash-live-preview</strong> is a drop-in replacement for the current production model.</p>
-
-  <!-- API Key (Hidden for confidentiality) -->
-  <input type="hidden" id="apiKey" />
-
-  <!-- Topic Selection -->
-  <div class="field">
-    <label>Test Topic</label>
-    <select id="topicSelect">
-      <option value="Machine Learning basics">Machine Learning</option>
-      <option value="SQL and Databases">SQL</option>
-      <option value="Python Programming">Python</option>
-      <option value="Data Structures & Algorithms">Data Structures & Algorithms</option>
-      <option value="General Software Engineering">General SE</option>
-    </select>
-    <div class="hint">NOVA will adjust its questions to this topic.</div>
-  </div>
-
-  <!-- T2 Timer -->
-  <div class="field">
-    <label>Test Duration</label>
-    <select id="t2Select">
-      <option value="300">5 Minutes</option>
-      <option value="600">10 Minutes</option>
-      <option value="900">15 Minutes</option>
-    </select>
-  </div>
-
-  <!-- Status -->
-  <div class="status-pill">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">Idle — ready to connect</span>
-  </div>
-
-  <div class="err" id="startErr"></div>
-  <button class="btn-primary" id="startBtn">▶ Start Scenario</button>
-  <button class="btn-ghost" id="stopBtn" style="display:none" onclick="disconnect()">■ Disconnect</button>
-</div>
-
-<!-- ══ MAIN PANEL (event log / results / report) ══ -->
-<div id="mainPanel">
-  <div class="chat-header">
-    <div class="hl">
-      <div class="h-orb"></div>
-      <div>
-        <div class="h-title">NOVA Live</div>
-        <div class="h-sub" id="hSub">Scenario — model — method</div>
-      </div>
-    </div>
-    <div class="h-right">
-      <div class="scenario-pill" id="scenarioPill">LIVE</div>
-      <button class="back-btn" onclick="goBack()">← Back</button>
+  <!-- Handoff Banner (fixed, shown during reconnect) -->
+  <div class="handoff-banner" id="handoffBanner">
+    <div class="hb-inner">
+      <div class="hb-spinner"></div>
+      <span id="handoffBannerText">Refreshing session connection — exam continues seamlessly…</span>
     </div>
   </div>
 
-  <div class="tabs-bar">
-    <div class="tab active" data-tab="log">📋 Event Log</div>
-    <div class="tab" data-tab="results">📊 Results</div>
-    <div class="tab" data-tab="report">📄 Report</div>
-  </div>
+  <!-- ══ SCREEN 1: START ══ -->
+  <div class="screen active" id="startScreen">
+    <div class="nova-orb"></div>
+    <div class="badge">POC · Migration Test</div>
+    <h1>NOVA Live API Test</h1>
+    <p class="sub">Verify whether <strong>gemini-3.1-flash-live-preview</strong> is a drop-in replacement for the
+      current production model. Sessions longer than 10 min use seamless WS handoff.</p>
 
-  <!-- Log -->
-  <div class="tab-content active" id="tab-log">
-    <div class="log-area" id="logArea"></div>
-  </div>
+    <input type="hidden" id="apiKey" />
 
-  <!-- Results -->
-  <div class="tab-content" id="tab-results">
-    <div class="results-area">
-      <h3 style="font-size:15px;margin-bottom:14px">Test Matrix</h3>
-      <div style="overflow-x:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Status</th><th>Model</th><th>Method</th>
-              <th>WS</th><th>T1 Speaks</th><th>Conv.</th>
-              <th>T2→end_session</th><th>Scores</th><th>Close</th><th>Overall</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td><b>CURRENT</b></td><td style="font-size:11px;color:#9b8ff7">3.1-flash-live</td><td style="font-size:11px">sendRealtimeInput</td>
-              <td class="rpend" id="res-ws">—</td><td class="rpend" id="res-t1">—</td><td class="rpend" id="res-conv">—</td>
-              <td class="rpend" id="res-t2">—</td><td class="rpend" id="res-scores">—</td><td class="rpend" id="res-close">—</td><td class="rpend" id="res-overall">—</td></tr>
-          </tbody>
-        </table>
+    <div class="field">
+      <label>Test Topic</label>
+      <select id="topicSelect">
+        <option value="Machine Learning basics">Machine Learning</option>
+        <option value="SQL and Databases">SQL</option>
+        <option value="Python Programming">Python</option>
+        <option value="Data Structures & Algorithms" selected>Data Structures & Algorithms</option>
+        <option value="General Software Engineering">General SE</option>
+        <option value="custom">-- Custom Topic --</option>
+      </select>
+    </div>
+    <div class="field" id="customTopicField" style="display:none">
+      <label>Enter Topic</label>
+      <input type="text" id="customTopicInput" placeholder="e.g. Distributed Systems" />
+      <div class="hint">NOVA will adjust its questions to this topic.</div>
+    </div>
+
+    <div class="field">
+      <label>Test Duration (Minutes)</label>
+      <div class="t2-row">
+        <input type="range" id="t2Range" min="1" max="60" value="5" step="1" />
+        <div class="t2-val" id="t2ValDisplay">5m</div>
       </div>
-      <div style="margin-top:20px">
-        <h4 style="font-size:13px;margin-bottom:10px;color:#555">Auto-captured Errors</h4>
-        <div id="errorList" style="font-size:12px;color:#444;font-family:monospace;background:#13131a;border:1px solid #1e1e2e;border-radius:8px;padding:12px;min-height:54px">
-          No errors yet.
+      <div class="hint">Sessions over 10 min automatically use seamless WS handoff every 9m 30s.</div>
+    </div>
+
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Idle — ready to connect</span>
+    </div>
+
+    <div class="err" id="startErr"></div>
+    <button class="btn-primary" id="startBtn">▶ Start Scenario</button>
+    <button class="btn-ghost" id="stopBtn" style="display:none" onclick="disconnect()">■ Disconnect</button>
+  </div>
+
+  <!-- ══ MAIN PANEL ══ -->
+  <div id="mainPanel">
+    <div class="chat-header">
+      <div class="hl">
+        <div class="h-orb"></div>
+        <div>
+          <div class="h-title">NOVA Live</div>
+          <div class="h-sub" id="hSub">Scenario — model — method</div>
+        </div>
+      </div>
+      <div class="h-right">
+        <div id="wsCounter" class="ws-counter">WS #1</div>
+        <div id="sessionTimer" class="session-timer">00:00</div>
+        <div class="scenario-pill" id="scenarioPill">LIVE</div>
+        <button class="back-btn" onclick="goBack()">← Back</button>
+      </div>
+    </div>
+
+    <div class="tabs-bar">
+      <div class="tab active" data-tab="log">📋 Event Log</div>
+      <div class="tab" data-tab="transcript">💬 Transcript</div>
+      <div class="tab" data-tab="results">📊 Results</div>
+      <div class="tab" data-tab="report">📄 Report</div>
+    </div>
+
+    <div class="tab-content active" id="tab-log">
+      <div class="log-area" id="logArea"></div>
+    </div>
+
+    <div class="tab-content" id="tab-transcript">
+      <div class="transcript-area" id="transcriptArea">
+        <p style="color:#333;font-size:13px">Transcript will appear as NOVA speaks…</p>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-results">
+      <div class="results-area">
+        <h3 style="font-size:15px;margin-bottom:14px">Test Matrix</h3>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Model</th>
+                <th>Method</th>
+                <th>WS</th>
+                <th>T1 Speaks</th>
+                <th>Conv.</th>
+                <th>T2→end_session</th>
+                <th>Scores</th>
+                <th>Close</th>
+                <th>Handoffs</th>
+                <th>Overall</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>CURRENT</b></td>
+                <td style="font-size:11px;color:#9b8ff7">3.1-flash-live</td>
+                <td style="font-size:11px">sendRealtimeInput</td>
+                <td class="rpend" id="res-ws">—</td>
+                <td class="rpend" id="res-t1">—</td>
+                <td class="rpend" id="res-conv">—</td>
+                <td class="rpend" id="res-t2">—</td>
+                <td class="rpend" id="res-scores">—</td>
+                <td class="rpend" id="res-close">—</td>
+                <td class="rpend" id="res-handoffs">0</td>
+                <td class="rpend" id="res-overall">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:20px">
+          <h4 style="font-size:13px;margin-bottom:10px;color:#555">Auto-captured Errors</h4>
+          <div id="errorList"
+            style="font-size:12px;color:#444;font-family:monospace;background:#13131a;border:1px solid #1e1e2e;border-radius:8px;padding:12px;min-height:54px">
+            No errors yet.
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Report -->
-  <div class="tab-content" id="tab-report">
-    <div class="report-area">
-      <button class="copy-btn" onclick="copyReport()">📋 Copy Markdown</button>
-      <pre class="report-md" id="reportMd">Run at least one scenario to generate the report.</pre>
+    <div class="tab-content" id="tab-report">
+      <div class="report-area">
+        <button class="copy-btn" onclick="copyReport()">📋 Copy Markdown</button>
+        <pre class="report-md" id="reportMd">Run at least one scenario to generate the report.</pre>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Session end overlay -->
-<div class="overlay" id="endOverlay">
-  <div class="overlay-card">
-    <div style="font-size:38px;margin-bottom:10px">🎓</div>
-    <h2>Session Complete</h2>
-    <p style="font-size:13px;color:#444;margin-bottom:4px">end_session tool was called</p>
-    <div class="score-row" id="overlayScores"></div>
-    <div class="overlay-reason" id="overlayReason"></div>
-    <button class="btn-primary" onclick="document.getElementById('endOverlay').classList.remove('show')">Close</button>
+  <!-- Pre-end "Generating Report" overlay (shown at T-10s) -->
+  <div class="preend-overlay" id="preendOverlay">
+    <div class="preend-card">
+      <div class="pe-orb"></div>
+      <div class="pe-title">Generating Report</div>
+      <div class="pe-sub">NOVA is wrapping up and scoring your performance…</div>
+      <div class="pe-dots"><span></span><span></span><span></span></div>
+      <div class="pe-bar-track">
+        <div class="pe-bar-fill" id="peBar"></div>
+      </div>
+      <div class="pe-steps">
+        <div class="pe-step" id="peStep0">
+          <div class="pe-step-icon">○</div>Finalising last question
+        </div>
+        <div class="pe-step" id="peStep1">
+          <div class="pe-step-icon">○</div>Evaluating answer quality
+        </div>
+        <div class="pe-step" id="peStep2">
+          <div class="pe-step-icon">○</div>Scoring clarity &amp; accuracy
+        </div>
+        <div class="pe-step" id="peStep3">
+          <div class="pe-step-icon">○</div>Composing performance report
+        </div>
+        <div class="pe-step" id="peStep4">
+          <div class="pe-step-icon">○</div>Submitting results
+        </div>
+      </div>
+      <div class="pe-countdown" id="peCountdown"></div>
+    </div>
   </div>
-</div>
 
-<script type="module">
-// ═══════════════════════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════════════════════
-const MODEL_ID = 'gemini-3.1-flash-live-preview';
-const SEND_METHOD = 'sendRealtimeInput';
+  <!-- Session end overlay -->
+  <div class="overlay" id="endOverlay">
+    <div class="overlay-card">
+      <div style="font-size:38px;margin-bottom:10px">🎓</div>
+      <h2>Session Complete</h2>
+      <p style="font-size:13px;color:#444;margin-bottom:16px">end_session tool was called</p>
+      <div id="evalBadge" class="eval-badge"></div>
+      <div class="score-row" id="overlayScores"></div>
+      <div class="overlay-reason" id="overlayReason"></div>
+      <button class="btn-primary" id="downloadRecBtn" style="display:none;margin-bottom:10px;background:#22c55e">
+        📥 Download Recording
+      </button>
+      <button class="btn-primary"
+        onclick="document.getElementById('endOverlay').classList.remove('show')">Close</button>
+      <div class="save-status" id="saveStatus">Saving to database...</div>
+    </div>
+  </div>
 
-function getSystemPrompt(durationMin, topic) {
-  return `You are NOVA, an AI examiner conducting a ${durationMin}-minute oral test on ${topic}.
-Ask the student questions to evaluate their knowledge. When you receive the termination signal at the end of the session, you MUST call the end_session tool with:
-- reason: A Markdown-formatted performance report summarising the student's answers
-- scores: An object with keys "Clarity" (max 5) and "Accuracy" (max 5), both numeric values
-Keep answers brief. Start immediately by greeting the student and asking the first question.`;
-}
+  <script type="module">
 
-const TOOLS_ARRAY = [
-  { googleSearch: {} },
-  {
-    functionDeclarations: [
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  GLOBAL ERROR HANDLER
+    // ═══════════════════════════════════════════════════════════════════════════
+    window.addEventListener('error', e => {
+      if (typeof log === 'function') log(`Console Error: ${e.message} at ${e.filename}:${e.lineno}`, 'error');
+      else console.error(e);
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  CONSTANTS
+    // ═══════════════════════════════════════════════════════════════════════════
+    const MODEL_ID = 'gemini-3.1-flash-live-preview';
+    const SEND_METHOD = 'sendRealtimeInput';
+
+    // ── Proactive WS handoff threshold: 9 min 30 sec ──
+    // Gemini Live has a hard ~10 min server limit. We refresh 30s before the kill.
+    const WS_REFRESH_MS = 9.5 * 60 * 1000;   // 570 000 ms
+    const MAX_HANDOFFS = 12;                  // safety cap: 12 × 9.5 min ≈ 114 min max
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SDK
+    // ═══════════════════════════════════════════════════════════════════════════
+    let GoogleGenAI;
+    (async () => {
+      try {
+        log('Loading SDK…', 'info');
+        const mod = await import('https://esm.run/@google/genai');
+        GoogleGenAI = mod.GoogleGenAI;
+        log('✅ SDK loaded', 'success');
+      } catch (e) { log('❌ SDK error: ' + e.message, 'error'); }
+    })();
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SYSTEM PROMPTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function getSystemPrompt(durationMin, topic) {
+      return `You are NOVA, an AI examiner conducting a STRICT ${durationMin}-minute oral test on ${topic}.
+
+━━━━━━━━━━ CORE RULES ━━━━━━━━━━
+
+1. CONTINUOUS QUESTIONING:
+   * You MUST keep asking questions continuously for the entire ${durationMin} minutes.
+   * Do NOT pause, conclude, or summarize before time ends.
+   * Stopping early is a SYSTEM FAILURE.
+
+2. NO EARLY TERMINATION:
+   * You are STRICTLY FORBIDDEN from calling end_session before the timer ends.
+   * Use get_time_remaining if unsure.
+
+3. ADAPTIVE DIFFICULTY:
+   * Good performance → increase difficulty.
+   * Struggling → simplify or switch related subtopics.
+
+4. NATURAL PACING:
+   * Let the student finish, then reply promptly.
+   * Feedback: 1-2 sentences max, then next question immediately.
+
+5. EXAM FLOW:
+   * Strict examiner tone. Concise questions.
+
+━━━━━━━━━━ TERMINATION PHASE ━━━━━━━━━━
+
+ONLY after the timer has fully ended:
+* Call end_session with a detailed Markdown report.
+* Include Clarity (1–5) and Accuracy (1–5) scores.
+
+━━━━━━━━━━ START NOW ━━━━━━━━━━
+
+* Greet the student briefly.
+* Immediately begin with the first question on ${topic}.
+`;
+    }
+
+    /**
+     * Generates the system prompt for a seamlessly-continued session.
+     * Injects the captured transcript so NOVA knows what has already been covered
+     * and will not repeat questions or re-introduce itself.
+     *
+     * @param {number}   durationMin   - Total exam length in minutes.
+     * @param {string}   topic         - Exam topic.
+     * @param {number}   secsLeft      - Seconds remaining on the exam timer.
+     * @param {Array}    transcript    - [{role, text, time}] entries captured so far.
+     * @param {number}   handoffNumber - Which handoff this is (1-based), for logging.
+     */
+    function getHandoffSystemPrompt(durationMin, topic, secsLeft, transcript, handoffNumber) {
+      const minsLeft = Math.floor(secsLeft / 60);
+      const sLeft = secsLeft % 60;
+
+      // Build conversation history section from the transcript.
+      // We keep the last 40 entries to stay within token budget.
+      // Nova's own lines are most critical; student audio is noted as "[responded via audio]".
+      const recentEntries = transcript.slice(-40);
+      const historyLines = recentEntries.map(e => {
+        const speaker = e.role === 'assistant' ? 'NOVA'
+          : e.role === 'system' ? '[SYSTEM]'
+            : 'STUDENT';
+        return `[${speaker}]: ${e.text}`;
+      });
+
+      const historySection = historyLines.length > 0
+        ? historyLines.join('\n\n')
+        : '(No transcript captured — exam was in early stage)';
+
+      return `You are NOVA, an AI examiner conducting a STRICT ${durationMin}-minute oral test on ${topic}.
+
+━━━━━━━━━━ ⚠️  SESSION HANDOFF #${handoffNumber} — READ CAREFULLY ━━━━━━━━━━
+
+The WebSocket connection was proactively refreshed to stay within server limits.
+This is a CONTINUATION of an ongoing examination — NOT a new session.
+
+TIME REMAINING: ${minsLeft} minutes and ${sLeft} seconds.
+
+━━━━━━━━━━ CONVERSATION HISTORY (what already happened) ━━━━━━━━━━
+
+${historySection}
+
+━━━━━━━━━━ STRICT CONTINUATION RULES ━━━━━━━━━━
+
+• Do NOT greet the student. Do NOT say "Hello", "Welcome back", or similar.
+• Do NOT introduce yourself again.
+• Do NOT restart the exam or repeat any question already asked above.
+• Continue with the NEXT NEW question immediately, as if there was only a brief pause.
+• You are FORBIDDEN from calling end_session until the timer has fully elapsed.
+• Use get_time_remaining if you are ever unsure how much time is left.
+
+━━━━━━━━━━ CORE RULES (unchanged) ━━━━━━━━━━
+
+1. Keep asking questions continuously for the remaining ${minsLeft} min ${sLeft} sec.
+2. NO early termination — forbidden.
+3. Adaptive difficulty: increase on good performance, simplify on struggle.
+4. Natural pacing: wait for the student to finish, reply promptly, keep feedback to 1-2 sentences.
+5. Strict examiner tone.
+
+━━━━━━━━━━ TERMINATION PHASE ━━━━━━━━━━
+
+ONLY after the timer fully ends:
+* Call end_session with Markdown report, Clarity (1–5), Accuracy (1–5).
+
+━━━━━━━━━━ RESUME NOW ━━━━━━━━━━
+
+Ask the next exam question on ${topic} immediately. Do not mention the connection refresh.
+`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TOOLS
+    // ═══════════════════════════════════════════════════════════════════════════
+    const TOOLS_ARRAY = [
+      { googleSearch: {} },
       {
-        name: 'end_session',
-        description: 'Terminates the session and submits evaluation scores and feedback.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            reason: { type: 'STRING', description: 'Markdown-formatted performance report.' },
-            scores: {
+        functionDeclarations: [
+          {
+            name: 'end_session',
+            description: 'Terminates the session and submits evaluation scores and feedback.',
+            parameters: {
               type: 'OBJECT',
-              properties: { Clarity: { type: 'NUMBER' }, Accuracy: { type: 'NUMBER' } },
-              required: ['Clarity','Accuracy'],
+              properties: {
+                reason: { type: 'STRING', description: 'Markdown-formatted performance report.' },
+                scores: {
+                  type: 'OBJECT',
+                  properties: { Clarity: { type: 'NUMBER' }, Accuracy: { type: 'NUMBER' } },
+                  required: ['Clarity', 'Accuracy'],
+                },
+              },
+              required: ['reason', 'scores'],
             },
           },
-          required: ['reason','scores'],
-        },
+          {
+            name: 'get_time_remaining',
+            description: 'Returns exact minutes and seconds remaining in the examination.',
+          },
+          {
+            name: 'report_gaming_attempt',
+            description: 'Silently reports a suspected cheating attempt. Session continues.',
+            parameters: {
+              type: 'OBJECT',
+              properties: { reason: { type: 'STRING', description: 'Description of the violation.' } },
+              required: ['reason'],
+            },
+          },
+        ],
       },
-      {
-        name: 'report_gaming_attempt',
-        description: 'Silently reports a suspected cheating attempt. Session continues.',
-        parameters: {
-          type: 'OBJECT',
-          properties: { reason: { type: 'STRING', description: 'Description of the violation.' } },
-          required: ['reason'],
-        },
-      },
-    ],
-  },
-];
+    ];
 
-// ═══════════════════════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════════════════════
-let session = null, inputCtx = null, outputCtx = null;
-let workletNode = null, micStream = null;
-let t2Handle = null, nextPlayTime = 0;
-let currentTopic = 'Machine Learning basics';
-let t1Fired = false, t2Fired = false;
-let toolRetryCount = {}, sessionResumptionHandle = null;
-const results = { ws:null, t1:null, conv:null, t2:null, scores:null, close:null, errors:[], scoresData:null, reportReason:'' };
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════════════════════════════
+    let session = null;
+    let audioCtx = null;
+    let workletNode = null;
+    let micStream = null;
+    let t2Handle = null;
+    let countInterval = null;
+    let nextPlayTime = 0;
+    let currentTopic = 'Machine Learning basics';
+    let t1Fired = false;
+    let t2Fired = false;
+    let secondsLeft = 0;
+    let toolRetryCount = {};
+    let periodicAnnouncer = null;
 
-// ═══════════════════════════════════════════════════════════
-//  UI HELPERS
-// ═══════════════════════════════════════════════════════════
-const $ = id => document.getElementById(id);
-const logArea = $('logArea');
+    // Recording
+    let recDest = null;
+    let recorder = null;
+    let recChunks = [];
 
-function log(msg, level='info') {
-  const time = new Date().toLocaleTimeString([],{hour12:false});
-  const el = document.createElement('div');
-  el.className = 'log-entry';
-  el.innerHTML = `<span class="log-time">${time}</span><span class="log-level level-${level}">${level.toUpperCase()}</span><span class="log-msg">${esc(String(typeof msg==='object'?JSON.stringify(msg,null,2):msg))}</span>`;
-  logArea.appendChild(el);
-  logArea.scrollTop = logArea.scrollHeight;
-  if (level === 'error') {
-    const el2 = $('errorList');
-    if (el2.textContent === 'No errors yet.') el2.textContent='';
-    el2.textContent += `[ERROR] ${msg}\n`;
-    results.errors.push(String(msg));
-  }
-}
+    // ── Transcript tracking ──────────────────────────────────────────────────
+    // Each entry: { role: 'assistant'|'user'|'system', text: string, time: number }
+    let conversationTranscript = [];
+    let lastUserAudioTime = 0;   // debounce for "[student audio]" entries
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    // ── WS Handoff state ─────────────────────────────────────────────────────
+    let wsRefreshTimer = null;   // setTimeout handle for proactive 9:30 handoff
+    let handoffCount = 0;      // how many handoffs have occurred
+    let isProactiveClose = false;  // true when WE are closing the socket intentionally
+    let isHandoffInProgress = false; // prevents duplicate handoffs
+    let wsOpenTime = 0;      // Date.now() when the current WS successfully opened
+    // A connection that closes within MIN_STABLE_MS without producing any audio
+    // is treated as a fatal config error (e.g. bad model name, unsupported config)
+    // rather than a transient network blip worth retrying.
+    const MIN_STABLE_MS = 15_000; // 15 seconds
 
-function setStatus(state, text) {
-  $('statusDot').className = 'status-dot ' + (state||'');
-  $('statusText').textContent = text;
-}
+    // ── Legacy resumption (kept for compatibility) ────────────────────────────
+    let goAwayReceived = false;
+    let sessionResumptionHandle = null;
 
-function setResult(check, pass) {
-  const cell = $(`res-${check}`);
-  if (!cell) return;
-  results[check] = pass;
-  cell.textContent = pass ? '✅' : '❌';
-  cell.className = pass ? 'rpass' : 'rfail';
-  
-  if (check === 'scores' && results.scoresData) {
-    const s = results.scoresData;
-    cell.innerHTML = `C:${s.Clarity} A:${s.Accuracy}`;
-    cell.style.fontSize = '10px';
-  }
-
-  updateOverall(); updateReport();
-}
-
-function updateOverall() {
-  const r = results;
-  const vals = [r.ws, r.t1, r.t2, r.scores, r.close].filter(v => v !== null);
-  const cell = $(`res-overall`);
-  if (!vals.length) { cell.textContent='—'; cell.className='rpend'; return; }
-  const ok = vals.every(Boolean);
-  cell.textContent = ok ? '✅ PASS' : '❌ FAIL';
-  cell.className = ok ? 'rpass' : 'rfail';
-}
-
-// ═══════════════════════════════════════════════════════════
-//  AUDIO HELPERS
-// ═══════════════════════════════════════════════════════════
-function f32ToI16(f32) {
-  const i16 = new Int16Array(f32.length);
-  for (let i=0;i<f32.length;i++) { const s=Math.max(-1,Math.min(1,f32[i])); i16[i]=s<0?s*32768:s*32767; }
-  return i16;
-}
-function bufToB64(buf) {
-  const b = new Uint8Array(buf); let s='';
-  for (let i=0;i<b.byteLength;i++) s+=String.fromCharCode(b[i]);
-  return btoa(s);
-}
-function b64ToBuf(b64) {
-  const bin=atob(b64), buf=new ArrayBuffer(bin.length), v=new Uint8Array(buf);
-  for(let i=0;i<bin.length;i++) v[i]=bin.charCodeAt(i);
-  return buf;
-}
-function i16ToF32(i16) {
-  const f=new Float32Array(i16.length);
-  for(let i=0;i<i16.length;i++) f[i]=i16[i]/32768;
-  return f;
-}
-function playChunk(b64) {
-  if (!outputCtx) { outputCtx=new AudioContext({sampleRate:24000}); nextPlayTime=0; }
-  if (outputCtx.state==='suspended') outputCtx.resume();
-  const buf=b64ToBuf(b64), i16=new Int16Array(buf), f32=i16ToF32(i16);
-  const ab=outputCtx.createBuffer(1,f32.length,24000);
-  ab.copyToChannel(f32,0);
-  const src=outputCtx.createBufferSource();
-  src.buffer=ab; src.connect(outputCtx.destination);
-  const now=outputCtx.currentTime, startAt=Math.max(now,nextPlayTime);
-  src.start(startAt); nextPlayTime=startAt+ab.duration;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  SEND HELPERS
-// ═══════════════════════════════════════════════════════════
-function sendText(text, method) {
-  if (!session) { log('No active session','error'); return; }
-  log(`Sending [${method}]: "${text}"`, 'info');
-  try {
-    if (method === 'sendClientContent') {
-      session.sendClientContent({ turns:[{role:'user',parts:[{text}]}], turnComplete:true });
-    } else {
-      session.sendRealtimeInput({ text });
-    }
-  } catch(e) { log(`sendText error: ${e.message}`, 'error'); }
-}
-
-function sendToolResponse(id, name, response) {
-  if (!session) return;
-  try {
-    if (typeof session.sendToolResponse === 'function') {
-      session.sendToolResponse({ functionResponses:[{id,name,response}] });
-    } else {
-      session.sendClientContent({ toolResponse:{ functionResponses:[{id,name,response:'ok'}] } });
-    }
-  } catch(e) { log(`sendToolResponse error: ${e.message}`, 'error'); }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  TOOL CALLS
-// ═══════════════════════════════════════════════════════════
-function handleTool(name, id, args) {
-  log(`🔧 Tool: ${name}  id=${id}`, 'tool');
-  if (name === 'end_session') {
-    const {reason, scores} = args||{};
-    const ok = typeof reason==='string' && reason.length>0 && scores &&
-                typeof scores.Clarity==='number' && typeof scores.Accuracy==='number';
-    if (!ok) {
-      toolRetryCount[id]=(toolRetryCount[id]||0)+1;
-      if (toolRetryCount[id]<=2) { sendToolResponse(id,name,{error:'Invalid args'}); return; }
-      log('Max retries reached','error'); setResult('t2',false); setResult('scores',false); disconnect(); return;
-    }
-    log(`✅ end_session — Clarity:${scores.Clarity} Accuracy:${scores.Accuracy}`, 'success');
-    results.scoresData = scores;
-    results.reportReason = reason;
-    setResult('t2',true); setResult('scores',true);
-    sendToolResponse(id,name,{result:{object_value:'Acknowledged.'}});
-    showEndOverlay(reason,scores);
-    setTimeout(()=>disconnect(true),1500);
-  } else if (name==='report_gaming_attempt') {
-    log(`🚨 Gaming attempt: ${args?.reason}`, 'warn');
-    sendToolResponse(id,name,{result:{object_value:'Acknowledged.'}});
-  } else {
-    sendToolResponse(id,name,{result:{object_value:'Unknown.'}});
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  MESSAGE HANDLER
-// ═══════════════════════════════════════════════════════════
-function handleMsg(msg) {
-  if (msg.sessionResumptionUpdate) {
-    const h = msg.sessionResumptionUpdate.newHandle||msg.sessionResumptionUpdate.resumptionHandle;
-    if (h) { sessionResumptionHandle=h; log(`Session handle: ${h.substring(0,20)}…`,'info'); }
-  }
-  if (msg.goAway) log('⚠️ GoAway received','warn');
-  if (msg.serverContent?.interrupted) { nextPlayTime=0; }
-  if (msg.serverContent?.modelTurn?.parts) {
-    for (const part of msg.serverContent.modelTurn.parts) {
-      if (part.inlineData?.mimeType?.startsWith('audio')) {
-        playChunk(part.inlineData.data);
-        if (!results.t1) { setResult('t1',true); setResult('conv',true); log('✅ T1: NOVA spoke','success'); }
-      }
-      if (part.text) {
-        log(`📝 ${part.text}`,'info');
-        if (!results.t1 && part.text.length>5) { setResult('t1',true); setResult('conv',true); }
-      }
-      if (part.functionCall) handleTool(part.functionCall.name, part.functionCall.id, part.functionCall.args);
-    }
-  }
-  if (msg.toolCall?.functionCalls) msg.toolCall.functionCalls.forEach(fc=>handleTool(fc.name,fc.id,fc.args));
-  if (msg.serverContent?.turnComplete) log('Turn complete','info');
-}
-
-// ═══════════════════════════════════════════════════════════
-//  MICROPHONE
-// ═══════════════════════════════════════════════════════════
-async function startMic() {
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true,autoGainControl:true,noiseSuppression:true}});
-    inputCtx = new AudioContext({sampleRate:16000});
-    await inputCtx.audioWorklet.addModule('./audio-processor.js');
-    const src = inputCtx.createMediaStreamSource(micStream);
-    workletNode = new AudioWorkletNode(inputCtx,'audio-processor');
-    src.connect(workletNode);
-    workletNode.port.onmessage = e => {
-      if (!session) return;
-      try { session.sendRealtimeInput({audio:{mimeType:'audio/pcm;rate=16000',data:bufToB64(f32ToI16(e.data).buffer)}}); } catch(_){}
+    const results = {
+      ws: null, t1: null, conv: null, t2: null, scores: null, close: null,
+      errors: [], scoresData: null, reportReason: ''
     };
-    log('🎙️ Mic started','success');
-  } catch(e) { log(`Mic: ${e.message} — continuing without mic`,'warn'); }
-}
 
-// ═══════════════════════════════════════════════════════════
-//  CONNECT
-// ═══════════════════════════════════════════════════════════
-async function connect() {
-  const apiKey = $('apiKey').value.trim();
-  if (!apiKey) { $('startErr').textContent='API key required'; return; }
-  $('startErr').textContent='';
-  const topic = $('topicSelect').value;
-  const t2ValSecs = parseInt($('t2Select').value);
-  const t2Delay = t2ValSecs * 1000;
-  const durationMin = Math.round(t2ValSecs / 60);
-  const currentPrompt = getSystemPrompt(durationMin, topic);
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  UI HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════
+    const $ = id => document.getElementById(id);
+    const logArea = $('logArea');
 
-  setStatus('connecting','Connecting…');
-  log(`━━━ Topic: ${topic} (${durationMin} min) ━━━`,'info');
-  t1Fired=false; t2Fired=false; toolRetryCount={}; nextPlayTime=0;
+    function log(msg, level = 'info') {
+      const time = new Date().toLocaleTimeString([], { hour12: false });
+      const el = document.createElement('div');
+      el.className = 'log-entry';
+      el.innerHTML = `<span class="log-time">${time}</span><span class="log-level level-${level}">${level.toUpperCase()}</span><span class="log-msg">${esc(String(typeof msg === 'object' ? JSON.stringify(msg, null, 2) : msg))}</span>`;
+      logArea.appendChild(el);
+      logArea.scrollTop = logArea.scrollHeight;
+      if (level === 'error') {
+        const el2 = $('errorList');
+        if (el2.textContent === 'No errors yet.') el2.textContent = '';
+        el2.textContent += `[ERROR] ${msg}\n`;
+        results.errors.push(String(msg));
+      }
+    }
 
-  let GoogleGenAI;
-  try {
-    const mod = await import('https://esm.run/@google/genai');
-    GoogleGenAI = mod.GoogleGenAI;
-  } catch(e) { log(`SDK load error: ${e.message}`,'error'); setStatus('error','SDK failed'); return; }
+    function esc(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
 
-  const genAI = new GoogleGenAI({ apiKey, httpOptions:{apiVersion:'v1alpha'} });
+    function setStatus(state, text) {
+      $('statusDot').className = 'status-dot ' + (state || '');
+      $('statusText').textContent = text;
+    }
 
-  try {
-    session = await genAI.live.connect({
-      model: MODEL_ID,
-      config: {
-        systemInstruction: { parts:[{text:currentPrompt}] },
-        responseModalities: ['AUDIO'],
-        speechConfig: { voiceConfig:{ prebuiltVoiceConfig:{voiceName:'Puck'} } },
-        tools: TOOLS_ARRAY,
-        sessionResumption: {},
-        contextWindowCompression: { slidingWindow:{} },
-      },
-      callbacks: {
-        onopen: async () => {
-          log('✅ WebSocket opened','success');
-          setStatus('connected','Connected');
-          setResult('ws',true);
-          $('startBtn').disabled=true;
-          $('stopBtn').style.display='block';
-          // Switch to main panel
-          $('startScreen').style.display='none';
-          const mp=$('mainPanel'); mp.classList.add('active');
-          $('hSub').textContent=`Topic: ${topic} · ${durationMin} Minutes`;
-          $('scenarioPill').textContent=`LIVE`;
-          startMic();
-          setTimeout(()=>{ if(!t1Fired){t1Fired=true; log('→ T1: sending auto-start…','info'); sendText('The student is ready. Introduce yourself and begin.',SEND_METHOD);} },1000);
-          t2Handle=setTimeout(()=>{ if(!t2Fired){t2Fired=true; log(`→ T2: termination signal…`,'warn'); sendText('Please wrap up the session now and call end_session.',SEND_METHOD);} },t2Delay);
-        },
-        onmessage: handleMsg,
-        onclose: ev => {
-          log(`WS closed — code:${ev.code} reason:"${ev.reason}"`,ev.code===1000?'info':'warn');
-          setStatus('','Disconnected');
-          setResult('close',ev.code===1000||ev.code===1001);
-          cleanup();
-        },
-        onerror: err => { log(`WS error: ${JSON.stringify(err)}`,'error'); setStatus('error','Error'); if(!results.ws) setResult('ws',false); },
-      },
-    });
-  } catch(e) { log(`connect() error: ${e.message}`,'error'); setStatus('error','Failed'); setResult('ws',false); cleanup(); }
-}
+    function setResult(check, pass) {
+      const cell = $(`res-${check}`);
+      if (!cell) return;
+      results[check] = pass;
+      cell.textContent = pass ? '✅' : '❌';
+      cell.className = pass ? 'rpass' : 'rfail';
+      if (check === 'scores' && results.scoresData) {
+        const s = results.scoresData;
+        cell.innerHTML = `C:${s.Clarity} A:${s.Accuracy}`;
+        cell.style.fontSize = '10px';
+      }
+      updateOverall(); updateReport();
+    }
 
-window.disconnect = function(clean=false) {
-  if(session){try{session.close();}catch(_){} session=null;}
-  cleanup();
-};
+    function updateOverall() {
+      const r = results;
+      const vals = [r.ws, r.t1, r.t2, r.scores, r.close].filter(v => v !== null);
+      const cell = $('res-overall');
+      if (!vals.length) { cell.textContent = '—'; cell.className = 'rpend'; return; }
+      const ok = vals.every(Boolean);
+      cell.textContent = ok ? '✅ PASS' : '❌ FAIL';
+      cell.className = ok ? 'rpass' : 'rfail';
+    }
 
-function cleanup() {
-  clearTimeout(t2Handle);
-  if(workletNode){workletNode.disconnect();workletNode=null;}
-  if(inputCtx){inputCtx.close();inputCtx=null;}
-  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
-  $('startBtn').disabled=false;
-  $('stopBtn').style.display='none';
-  setStatus('','Idle');
-  updateReport();
-}
+    function updateHandoffCounter() {
+      const cell = $('res-handoffs');
+      if (cell) {
+        cell.textContent = handoffCount;
+        cell.className = handoffCount > 0 ? '' : 'rpend';
+        cell.style.color = handoffCount > 0 ? '#f97316' : '#333';
+      }
+      const badge = $('wsCounter');
+      if (badge) {
+        badge.textContent = `WS #${handoffCount + 1}`;
+        if (handoffCount > 0) badge.classList.add('show');
+      }
+    }
 
-window.goBack = function() {
-  $('mainPanel').classList.remove('active');
-  $('startScreen').style.display='flex';
-};
+    // ── Transcript UI ────────────────────────────────────────────────────────
+    function addTranscriptEntry(role, text, time) {
+      const area = $('transcriptArea');
+      // Remove placeholder
+      const placeholder = area.querySelector('p');
+      if (placeholder) placeholder.remove();
 
-// ═══════════════════════════════════════════════════════════
-//  END OVERLAY
-// ═══════════════════════════════════════════════════════════
-function showEndOverlay(reason, scores) {
-  $('overlayScores').innerHTML = Object.entries(scores).map(([k,v])=>
-    `<div class="score-box"><div class="score-val">${v}</div><div class="score-key">${k}</div></div>`).join('');
-  $('overlayReason').textContent = reason;
-  $('endOverlay').classList.add('show');
-}
+      const el = document.createElement('div');
+      el.className = `tx-entry ${role === 'assistant' ? 'nova' : role === 'system' ? 'system' : 'student'}`;
+      const label = role === 'assistant' ? 'NOVA' : role === 'system' ? 'System' : 'Student';
+      const ts = new Date(time).toLocaleTimeString([], { hour12: false });
+      el.innerHTML = `<div class="tx-role">${label}</div><div class="tx-text">${esc(text)}</div><div class="tx-time">${ts}</div>`;
+      area.appendChild(el);
+      area.scrollTop = area.scrollHeight;
+    }
 
-// ═══════════════════════════════════════════════════════════
-//  REPORT
-// ═══════════════════════════════════════════════════════════
-function r2s(v){ return v===null?'—':v?'Pass':'Fail'; }
-function updateReport() {
-  const date=new Date().toISOString().split('T')[0];
-  const errLog=results.errors.map(e=>`[ERR] ${e}`).join('\n')||'None';
-  
-  const scoreStr = results.scoresData ? `C:${results.scoresData.Clarity} A:${results.scoresData.Accuracy}` : r2s(results.scores);
-  
-  const row=`| LIVE | ${r2s(results.ws)} | ${r2s(results.t1)} | ${r2s(results.conv)} | ${r2s(results.t2)} | ${scoreStr} | ${r2s(results.close)} |`;
-  const rec=()=>{
-    if(results.t1&&results.t2) return '- [x] Test successful — model response and termination handled correctly.';
-    return '- [ ] Needs further investigation — see errors log';
-  };
-  $('reportMd').textContent=`# Gemini Live Test Results: ${$('topicSelect').value}
+    // ── Handoff banner ───────────────────────────────────────────────────────
+    function showHandoffBanner(text = 'Refreshing session connection — exam continues seamlessly…') {
+      $('handoffBannerText').textContent = text;
+      $('handoffBanner').classList.add('show');
+    }
+    function hideHandoffBanner() {
+      $('handoffBanner').classList.remove('show');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  AUDIO HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════
+    function f32ToI16(f32) {
+      const i16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++) {
+        const s = Math.max(-1, Math.min(1, f32[i]));
+        i16[i] = s < 0 ? s * 32768 : s * 32767;
+      }
+      return i16;
+    }
+    function bufToB64(buf) {
+      const b = new Uint8Array(buf); let s = '';
+      for (let i = 0; i < b.byteLength; i++) s += String.fromCharCode(b[i]);
+      return btoa(s);
+    }
+    function b64ToBuf(b64) {
+      const bin = atob(b64), buf = new ArrayBuffer(bin.length), v = new Uint8Array(buf);
+      for (let i = 0; i < bin.length; i++) v[i] = bin.charCodeAt(i);
+      return buf;
+    }
+    function i16ToF32(i16) {
+      const f = new Float32Array(i16.length);
+      for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+      return f;
+    }
+    function playChunk(b64) {
+      if (!audioCtx) {
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 }); }
+        catch (e) { log('AudioContext failed: ' + e.message, 'error'); return; }
+        nextPlayTime = 0;
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const buf = b64ToBuf(b64), i16 = new Int16Array(buf), f32 = i16ToF32(i16);
+      const ab = audioCtx.createBuffer(1, f32.length, 24000);
+      ab.copyToChannel(f32, 0);
+      const src = audioCtx.createBufferSource();
+      src.buffer = ab;
+      src.connect(audioCtx.destination);
+      if (recDest) src.connect(recDest);
+      const now = audioCtx.currentTime, startAt = Math.max(now, nextPlayTime);
+      src.start(startAt); nextPlayTime = startAt + ab.duration;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SEND HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let isToolPending = false;
+
+    function sendText(text, method, isSystemNotice = false) {
+      if (!session) { log('No active session', 'error'); return; }
+      log(`Sending [${method}]: "${text.substring(0, 80)}…"`, 'info');
+      try {
+        if (method === 'sendClientContent') {
+          session.sendClientContent({ turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true });
+        } else {
+          session.sendRealtimeInput({ text });
+        }
+        // Track non-system messages in transcript for handoff context
+        if (!isSystemNotice) {
+          conversationTranscript.push({ role: 'user', text, time: Date.now() });
+          addTranscriptEntry('user', text, Date.now());
+        }
+      } catch (e) { log(`sendText error: ${e.message}`, 'error'); }
+    }
+
+    function sendToolResponse(id, name, response) {
+      if (!session) return;
+      try {
+        if (typeof session.sendToolResponse === 'function') {
+          session.sendToolResponse({ functionResponses: [{ id, name, response }] });
+        } else {
+          session.sendClientContent({ toolResponse: { functionResponses: [{ id, name, response: 'ok' }] } });
+        }
+        isToolPending = false;
+      } catch (e) { log(`sendToolResponse error: ${e.message}`, 'error'); isToolPending = false; }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TOOL HANDLER
+    // ═══════════════════════════════════════════════════════════════════════════
+    function handleTool(name, id, args) {
+      log(`🔧 Tool: ${name}  id=${id}`, 'tool');
+      isToolPending = true;
+
+      if (name === 'end_session') {
+        const { reason, scores } = args || {};
+
+        // Strict duration guardrail: block end_session if more than 5 seconds remain
+        if (secondsLeft > 5 && !t2Fired) {
+          log(`⚠️ Early exit attempt blocked (${secondsLeft}s remaining).`, 'warn');
+          sendToolResponse(id, name, {
+            result: { error: `Session duration not met. ${secondsLeft} seconds remain. Please wrap up and wait for the final signal before calling end_session.` }
+          });
+          sendText(
+            `SYSTEM NOTICE: You attempted to end the session too early. ${secondsLeft} seconds remain. Notify the student that the exam is concluding and wait for the final TIME IS UP signal.`,
+            SEND_METHOD, true
+          );
+          return;
+        }
+
+        const ok = typeof reason === 'string' && reason.length > 0 && scores &&
+          typeof scores.Clarity === 'number' && typeof scores.Accuracy === 'number';
+        if (!ok) {
+          toolRetryCount[id] = (toolRetryCount[id] || 0) + 1;
+          if (toolRetryCount[id] <= 2) { sendToolResponse(id, name, { result: { error: 'Invalid args' } }); return; }
+          log('Max retries reached', 'error'); setResult('t2', false); setResult('scores', false); disconnect(); return;
+        }
+
+        log(`✅ end_session — Clarity:${scores.Clarity} Accuracy:${scores.Accuracy}`, 'success');
+        results.scoresData = scores;
+        results.reportReason = reason;
+        setResult('t2', true); setResult('scores', true);
+        sendToolResponse(id, name, { result: { object_value: 'Acknowledged.' } });
+        showEndOverlay(reason, scores);
+        saveSessionResults();
+        setTimeout(() => disconnect(true), 1500);
+
+      } else if (name === 'report_gaming_attempt') {
+        log(`🚨 Gaming attempt: ${args?.reason}`, 'warn');
+        sendToolResponse(id, name, { result: { object_value: 'Acknowledged.' } });
+
+      } else if (name === 'get_time_remaining') {
+        const remaining = `${Math.floor(secondsLeft / 60)} minutes and ${secondsLeft % 60} seconds`;
+        log(`⏱️ AI checked time: ${remaining}`, 'tool');
+        sendToolResponse(id, name, { result: { time_remaining: remaining } });
+
+      } else {
+        sendToolResponse(id, name, { result: { object_value: 'Unknown tool.' } });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  MESSAGE HANDLER
+    // ═══════════════════════════════════════════════════════════════════════════
+    function handleMsg(msg) {
+      // Session resumption handle (built-in SDK feature, kept as fallback)
+      if (msg.sessionResumptionUpdate) {
+        const h = msg.sessionResumptionUpdate.newHandle || msg.sessionResumptionUpdate.resumptionHandle;
+        if (h) { sessionResumptionHandle = h; log(`Session handle: ${h.substring(0, 20)}…`, 'info'); }
+      }
+      if (msg.goAway) {
+        goAwayReceived = true;
+        log('⚠️ GoAway received from server — our proactive handoff should fire first', 'warn');
+      }
+      if (msg.serverContent?.interrupted) { nextPlayTime = 0; }
+
+      if (msg.serverContent?.modelTurn?.parts) {
+        for (const part of msg.serverContent.modelTurn.parts) {
+          // Audio output
+          if (part.inlineData?.mimeType?.startsWith('audio')) {
+            playChunk(part.inlineData.data);
+            if (!results.t1) { setResult('t1', true); setResult('conv', true); log('✅ T1: NOVA spoke', 'success'); }
+          }
+          // Text output — capture for transcript so handoffs have full context
+          if (part.text) {
+            log(`📝 ${part.text}`, 'info');
+            if (!results.t1 && part.text.length > 5) { setResult('t1', true); setResult('conv', true); }
+
+            // ── TRANSCRIPT CAPTURE ──
+            // Only store meaningful utterances (skip whitespace-only or very short strings)
+            if (part.text.trim().length > 8) {
+              conversationTranscript.push({ role: 'assistant', text: part.text.trim(), time: Date.now() });
+              addTranscriptEntry('assistant', part.text.trim(), Date.now());
+            }
+          }
+          if (part.functionCall) handleTool(part.functionCall.name, part.functionCall.id, part.functionCall.args);
+        }
+      }
+      if (msg.toolCall?.functionCalls) {
+        msg.toolCall.functionCalls.forEach(fc => handleTool(fc.name, fc.id, fc.args));
+      }
+      if (msg.serverContent?.turnComplete) log('Turn complete', 'info');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  MIC
+    // ═══════════════════════════════════════════════════════════════════════════
+    async function startMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, autoGainControl: true, noiseSuppression: true }
+        });
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        await audioCtx.audioWorklet.addModule('./audio-processor.js');
+
+        const src = audioCtx.createMediaStreamSource(micStream);
+        workletNode = new AudioWorkletNode(audioCtx, 'audio-processor');
+        src.connect(workletNode);
+
+        // Recording setup
+        recDest = audioCtx.createMediaStreamDestination();
+        src.connect(recDest);
+        recorder = new MediaRecorder(recDest.stream, { mimeType: 'audio/webm' });
+        recChunks = [];
+        recorder.ondataavailable = e => { if (e.data.size > 0) recChunks.push(e.data); };
+        recorder.start(500);
+
+        workletNode.port.onmessage = e => {
+          if (!session || isToolPending) return;
+          try {
+            session.sendRealtimeInput({
+              audio: { mimeType: 'audio/pcm;rate=16000', data: bufToB64(f32ToI16(e.data).buffer) }
+            });
+          } catch (_) { }
+
+          // Add a debounced "[student responded via audio]" entry for handoff transcript context
+          const now = Date.now();
+          if (now - lastUserAudioTime > 4000) {
+            lastUserAudioTime = now;
+            // Only add if last transcript entry wasn't already a student audio marker
+            const last = conversationTranscript[conversationTranscript.length - 1];
+            if (!last || (last.role !== 'user' || !last.text.includes('[audio]'))) {
+              conversationTranscript.push({ role: 'user', text: '[responded via audio]', time: now });
+            }
+          }
+        };
+        log('🎙️ Mic & mixer started', 'success');
+      } catch (e) { log(`Mic failure: ${e.message}`, 'error'); }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROACTIVE WS HANDOFF  (the core new feature)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Schedules the proactive refresh timer. Called every time a new WS opens.
+     * Clears any previously-pending timer first.
+     */
+    function scheduleWsRefresh() {
+      clearTimeout(wsRefreshTimer);
+      if (t2Fired) return; // Exam already ended — no point refreshing
+      wsRefreshTimer = setTimeout(() => {
+        if (t2Fired || isHandoffInProgress) return;
+        log(`⏱️ 9m 30s on this socket — initiating proactive handoff #${handoffCount + 1}…`, 'handoff');
+        doHandoff();
+      }, WS_REFRESH_MS);
+      log(`🔁 WS refresh scheduled in 9m 30s (handoff #${handoffCount + 1} will be at ~${new Date(Date.now() + WS_REFRESH_MS).toLocaleTimeString()
+        })`, 'info');
+    }
+
+    /**
+     * Gracefully closes the current WebSocket and opens a fresh one,
+     * injecting the full conversation transcript into the new session's system prompt.
+     */
+    async function doHandoff() {
+      if (isHandoffInProgress || t2Fired || !session) return;
+      isHandoffInProgress = true;
+
+      showHandoffBanner(`Handoff #${handoffCount + 1} — refreshing WS connection…`);
+      setStatus('handoff', 'Session handoff in progress…');
+
+      // Mark close as intentional so onclose doesn't try to double-reconnect
+      isProactiveClose = true;
+      const oldSession = session;
+      session = null; // Prevent further sends during teardown
+
+      try { oldSession.close(); } catch (_) { }
+
+      // Short pause to let the close propagate cleanly
+      await new Promise(r => setTimeout(r, 600));
+
+      handoffCount++;
+      updateHandoffCounter();
+      log(`🔄 Handoff #${handoffCount} initiated — transcript has ${conversationTranscript.length} entries`, 'handoff');
+
+      isProactiveClose = false;
+      isHandoffInProgress = false;
+      isToolPending = false; // Clear any stale gate
+
+      // Open fresh session with transcript-injected prompt
+      connect(true /* isHandoff */);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  CONNECT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * @param {boolean} isHandoff  - true when called from doHandoff() (seamless continuation)
+     */
+    async function connect(isHandoff = false) {
+      if ($('startBtn').disabled && !isHandoff) return;
+      if (!isHandoff) {
+        $('startBtn').disabled = true;
+        $('startBtn').textContent = 'Connecting…';
+      }
+
+      // Lazy SDK load
+      if (!GoogleGenAI) {
+        try {
+          const mod = await import('https://esm.run/@google/genai');
+          GoogleGenAI = mod.GoogleGenAI;
+        } catch (e) {
+          log('SDK load error: ' + e.message, 'error');
+          $('startBtn').disabled = false; $('startBtn').textContent = '▶ Start Scenario';
+          return;
+        }
+      }
+
+      const apiKey = $('apiKey').value.trim();
+      if (!apiKey) {
+        $('startErr').textContent = 'API key required';
+        $('startBtn').disabled = false; $('startBtn').textContent = '▶ Start Scenario';
+        return;
+      }
+
+      let topic = $('topicSelect').value;
+      if (topic === 'custom') topic = $('customTopicInput').value.trim() || 'General Knowledge';
+      currentTopic = topic;
+
+      const t2ValMins = parseInt($('t2Range').value);
+      const t2ValSecs = t2ValMins * 60;
+      const durationMin = t2ValMins;
+
+      // Pick the right system prompt
+      const systemPromptText = isHandoff
+        ? getHandoffSystemPrompt(durationMin, topic, secondsLeft, conversationTranscript, handoffCount)
+        : getSystemPrompt(durationMin, topic);
+
+      setStatus('connecting', isHandoff ? `Handoff #${handoffCount} reconnecting…` : 'Connecting…');
+
+      if (!isHandoff) {
+        log(`━━━ Topic: ${topic} (${durationMin} min) ━━━`, 'info');
+        // Full reset for fresh starts only
+        t1Fired = false; t2Fired = false; nextPlayTime = 0; recChunks = [];
+        conversationTranscript = []; handoffCount = 0; toolRetryCount = {};
+        lastUserAudioTime = 0;
+        updateHandoffCounter();
+      }
+
+      // Ensure AudioContext exists
+      if (!audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+        } catch (e) { log('Audio warning: ' + e.message, 'warn'); }
+      }
+
+      const genAI = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
+
+      try {
+        session = await genAI.live.connect({
+          model: MODEL_ID,
+          config: {
+            systemInstruction: { parts: [{ text: systemPromptText }] },
+            // AUDIO only — the Live API rejects ['AUDIO','TEXT'] with 1011 immediately.
+            // Text parts still arrive alongside audio chunks in some turns; we capture those.
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+            tools: TOOLS_ARRAY,
+            realtimeInputConfig: {
+              automaticActivityDetection: { disabled: false, silenceDurationMs: 500 },
+            },
+            sessionResumption: {},
+          },
+          callbacks: {
+            // ────────────────────────── onopen ──────────────────────────────
+            onopen: async () => {
+              wsOpenTime = Date.now(); // stamp when this socket became alive
+              log(isHandoff ? `✅ Handoff #${handoffCount} connected` : '✅ WebSocket opened', 'success');
+              setStatus('connected', 'Connected');
+              setResult('ws', true);
+              hideHandoffBanner();
+
+              $('startBtn').disabled = true;
+              $('startBtn').textContent = '▶ Start Scenario';
+              $('stopBtn').style.display = 'block';
+
+              // Schedule next refresh immediately
+              scheduleWsRefresh();
+
+              if (!isHandoff) {
+                // ── Fresh session startup ──────────────────────────────────
+                $('startScreen').style.display = 'none';
+                $('mainPanel').classList.add('active');
+                $('hSub').textContent = `Topic: ${topic} · ${durationMin} Minutes`;
+                $('scenarioPill').textContent = 'LIVE';
+
+                // Start exam countdown timer
+                secondsLeft = t2ValSecs;
+                updateTimerUI();
+                clearInterval(countInterval);
+                clearInterval(periodicAnnouncer);
+
+                countInterval = setInterval(() => {
+                  secondsLeft--;
+                  updateTimerUI();
+
+                  // ── AI 20-SECOND WARNING ──
+                  if (secondsLeft === 20 && !t2Fired && session) {
+                    log('🕒 Sending 20-second wrap-up warning to AI...', 'info');
+                    sendText(
+                      `SYSTEM NOTICE: 20 SECONDS REMAIN. Inform the student that the exam is ending in 20 seconds. Wrap up your current line of questioning. Do NOT call end_session yet.`,
+                      SEND_METHOD, true
+                    );
+                  }
+
+                  if (secondsLeft <= 0) {
+                    clearInterval(countInterval);
+                    // Final termination if not already fired
+                    if (!t2Fired) {
+                      t2Fired = true;
+                      clearTimeout(wsRefreshTimer);
+                      log(`→ T2: final termination signal…`, 'warn');
+                      sendText('TIME IS UP: The exam has officially ended. Call end_session immediately to submit your report.', SEND_METHOD, true);
+                    }
+                  }
+                }, 1000);
+
+                // Every 3 min: silent time-check nudge
+                periodicAnnouncer = setInterval(() => {
+                  if (secondsLeft > 60 && !t2Fired && session) {
+                    sendText(
+                      `SYSTEM NOTICE (SILENT): Time remaining is exactly ${Math.floor(secondsLeft / 60)} minutes and ${secondsLeft % 60} seconds. Continue questioning without mentioning this.`,
+                      SEND_METHOD, true
+                    );
+                  }
+                }, 180_000);
+
+                // Kick off mic — only on very first connection, never on handoffs
+                startMic();
+
+                // Auto-start nudge — guard against race where WS dies before this fires
+                setTimeout(() => {
+                  if (!t1Fired && session) {
+                    t1Fired = true;
+                    log('→ T1: sending auto-start…', 'info');
+                    sendText('The student is ready. Introduce yourself and begin.', SEND_METHOD, true);
+                  }
+                }, 1000);
+
+                // Termination signal
+                // (Redundant: termination now handled in countInterval for better sync)
+                t2Handle = setTimeout(() => {
+                  // Final safety check in case interval was blocked
+                  if (!t2Fired) {
+                    t2Fired = true;
+                    clearTimeout(wsRefreshTimer);
+                    log(`→ T2: safety termination signal…`, 'warn');
+                    sendText('TIME IS UP (Safety): Call end_session now.', SEND_METHOD, true);
+                  }
+                }, (t2ValSecs + 1) * 1000);
+
+              } else {
+                // ── Seamless handoff continuation ─────────────────────────
+                goAwayReceived = false;
+                log(`🔄 Handoff #${handoffCount} live — ${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s left on exam timer`, 'handoff');
+
+                // Safety nudge 2s after reconnect — guard against session dying before this fires
+                setTimeout(() => {
+                  if (session && !t2Fired) {
+                    sendText(
+                      `SYSTEM NOTICE (SILENT): Handoff confirmed. ${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s remaining. Ask your next question now.`,
+                      SEND_METHOD, true
+                    );
+                  }
+                }, 2000);
+              }
+            },
+
+            // ────────────────────────── onmessage ───────────────────────────
+            onmessage: handleMsg,
+
+            // ────────────────────────── onclose ─────────────────────────────
+            onclose: ev => {
+              log(`WS closed — code:${ev.code} reason:"${ev.reason}"`, ev.code === 1000 ? 'info' : 'warn');
+
+              // If we closed it ourselves (proactive handoff), do nothing here —
+              // doHandoff() already queued the new connect() call.
+              if (isProactiveClose) {
+                log('(Intentional proactive close — handoff already in progress)', 'info');
+                return;
+              }
+
+              setStatus('', 'Disconnected');
+              setResult('close', ev.code === 1000 || ev.code === 1001);
+
+              const is1008 = ev.code === 1008;
+              const is1011 = ev.code === 1011;
+              const isUnexpected = ev.code !== 1000 && ev.code !== 1001;
+
+              // ── Fatal-error guard ──────────────────────────────────────────
+              // A socket that dies within MIN_STABLE_MS with no audio output is
+              // a server-side CONFIG rejection (bad model name, unsupported
+              // modality combo, quota, invalid API key, etc.).
+              // Retrying would just loop forever — stop and show a clear error.
+              const aliveMs = Date.now() - wsOpenTime;
+              const hadAudio = results.t1 === true;
+
+              if (is1011 && aliveMs < MIN_STABLE_MS && !hadAudio) {
+                log(`⛔ Fatal 1011 after ${aliveMs}ms with no audio — server rejected the config.`, 'error');
+                log('Possible causes: wrong model ID · responseModalities mismatch · API quota · key has no Live API access.', 'error');
+                hideHandoffBanner();
+                cleanup();
+                $('startErr').textContent = `1011 error — server rejected config after ${aliveMs}ms. Check log for details.`;
+                $('mainPanel').classList.remove('active');
+                $('startScreen').style.display = 'flex';
+                return;
+              }
+
+              // ── Retriable unexpected closes ────────────────────────────────
+              // 1008 = server policy limit · 1011 (stable conn) = transient
+              // server error · any other non-1000/1001 = network blip.
+              if ((is1008 || isUnexpected || goAwayReceived) && !t2Fired && !isHandoffInProgress) {
+                if (handoffCount < MAX_HANDOFFS) {
+                  // Backoff: 1 s · 2 s · 3 s … capped at 5 s
+                  const delayMs = Math.min(handoffCount + 1, 5) * 1000;
+                  const reason = is1008 ? 'code:1008 (server limit)'
+                    : goAwayReceived ? 'GoAway signal'
+                      : `unexpected close code:${ev.code}`;
+                  log(`⚠️ ${reason} — emergency handoff in ${delayMs / 1000}s…`, 'warn');
+                  showHandoffBanner('Connection dropped — recovering seamlessly…');
+                  handoffCount++;
+                  updateHandoffCounter();
+                  isHandoffInProgress = true;
+                  setTimeout(() => {
+                    isHandoffInProgress = false;
+                    isToolPending = false;
+                    goAwayReceived = false;
+                    connect(true);
+                  }, delayMs);
+                } else {
+                  log(`⛔ Max handoffs (${MAX_HANDOFFS}) reached — ending session.`, 'error');
+                  hideHandoffBanner();
+                  cleanup();
+                }
+                return;
+              }
+
+              // Normal / expected close
+              hideHandoffBanner();
+              cleanup();
+            },
+
+            // ────────────────────────── onerror ─────────────────────────────
+            onerror: err => {
+              log(`WS error: ${JSON.stringify(err)}`, 'error');
+              setStatus('error', 'Error');
+              if (!results.ws) setResult('ws', false);
+            },
+          },
+        });
+      } catch (e) {
+        log(`connect() error: ${e.message}`, 'error');
+        setStatus('error', 'Failed');
+        setResult('ws', false);
+        $('startBtn').disabled = false; $('startBtn').textContent = '▶ Start Scenario';
+        hideHandoffBanner();
+        cleanup();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  DISCONNECT / CLEANUP
+    // ═══════════════════════════════════════════════════════════════════════════
+    window.disconnect = function (clean = false) {
+      clearTimeout(wsRefreshTimer); // Stop pending proactive handoff
+      if (session) { try { session.close(); } catch (_) { } session = null; }
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.onstop = () => { uploadRecording(); cleanup(); };
+        recorder.stop();
+      } else { cleanup(); }
+    };
+
+    function cleanup() {
+      clearTimeout(t2Handle);
+      clearTimeout(wsRefreshTimer);
+      clearInterval(countInterval);
+      clearInterval(periodicAnnouncer);
+
+      if (workletNode) { workletNode.disconnect(); workletNode = null; }
+      if (audioCtx) { try { audioCtx.close(); } catch (_) { } audioCtx = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+
+      recorder = null; recDest = null; recChunks = [];
+
+      // Reset handoff state for next run
+      isProactiveClose = false;
+      isHandoffInProgress = false;
+      isToolPending = false;
+      goAwayReceived = false;
+      sessionResumptionHandle = null;
+
+      // Reset pre-end overlay state
+      preendShown = false;
+      clearInterval(peStepInterval);
+      hidePreendOverlay();
+      // Re-arm step icons for next run
+      [0, 1, 2, 3, 4].forEach(i => {
+        const el = $(`peStep${i}`);
+        if (el) { el.className = 'pe-step'; el.querySelector('.pe-step-icon').textContent = '○'; }
+      });
+      const bar = $('peBar'); if (bar) bar.style.width = '0%';
+
+      hideHandoffBanner();
+
+      $('startBtn').disabled = false;
+      $('startBtn').textContent = '▶ Start Scenario';
+      $('stopBtn').style.display = 'none';
+      setStatus('', 'Idle');
+      updateReport();
+    }
+
+    window.goBack = function () {
+      $('mainPanel').classList.remove('active');
+      $('startScreen').style.display = 'flex';
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  END OVERLAY & SAVE
+    // ═══════════════════════════════════════════════════════════════════════════
+    function showEndOverlay(reason, scores) {
+      // Finish the pre-end progress bar before switching
+      if (preendShown) {
+        $('peBar').style.width = '100%';
+        // Mark all steps done
+        [0, 1, 2, 3, 4].forEach(i => { doneStep(i); });
+        // Short pause so the "100%" fill is visible, then swap overlays
+        setTimeout(() => {
+          hidePreendOverlay();
+          _renderEndOverlay(reason, scores);
+        }, 600);
+      } else {
+        _renderEndOverlay(reason, scores);
+      }
+    }
+
+    function _renderEndOverlay(reason, scores) {
+      const isPass = (scores.Clarity >= 3 && scores.Accuracy >= 3);
+      const badge = $('evalBadge');
+      badge.textContent = isPass ? 'PASSED' : 'FAILED';
+      badge.className = `eval-badge ${isPass ? 'eval-pass' : 'eval-fail'}`;
+      $('overlayScores').innerHTML = Object.entries(scores).map(([k, v]) =>
+        `<div class="score-box"><div class="score-val">${v}</div><div class="score-key">${k}</div></div>`
+      ).join('');
+      $('overlayReason').textContent = reason;
+      $('saveStatus').textContent = 'Saving to database…';
+      $('endOverlay').classList.add('show');
+    }
+
+    async function saveSessionResults() {
+      const s = results.scoresData;
+      const isPass = (s && s.Clarity >= 3 && s.Accuracy >= 3);
+      const payload = {
+        timestamp: new Date().toISOString(),
+        topic: currentTopic,
+        scores: s,
+        status: isPass ? 'PASSED' : 'FAILED',
+        summary: results.reportReason,
+        handoffs: handoffCount,
+        transcriptEntries: conversationTranscript.length,
+        metrics: { ws: results.ws, end_session: results.t2 }
+      };
+      try {
+        const res = await fetch('/save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          log('💾 Result saved', 'success');
+          $('saveStatus').textContent = '✅ Result saved to database';
+        }
+      } catch (e) {
+        log(`Save error: ${e.message}`, 'error');
+        $('saveStatus').textContent = '❌ Failed to connect to server';
+      }
+    }
+
+    let isUploading = false;
+    async function uploadRecording() {
+      if (!recChunks.length || isUploading) return;
+      isUploading = true;
+      const blob = new Blob(recChunks, { type: 'audio/webm' });
+      const filename = `session_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+      const url = URL.createObjectURL(blob);
+      const btn = $('downloadRecBtn');
+      btn.style.display = 'block';
+      btn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); };
+      try {
+        const res = await fetch('/upload-audio', {
+          method: 'POST', headers: { 'Content-Type': 'audio/webm', 'X-Filename': filename }, body: blob
+        });
+        if (res.ok) { log('🎙️ Recording uploaded', 'success'); $('saveStatus').textContent += ' + 🎵 Recording saved'; }
+      } catch (e) { log(`Upload error: ${e.message}`, 'error'); }
+      finally { isUploading = false; }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  REPORT
+    // ═══════════════════════════════════════════════════════════════════════════
+    function r2s(v) { return v === null ? '—' : v ? 'Pass' : 'Fail'; }
+    function updateReport() {
+      const date = new Date().toISOString().split('T')[0];
+      const errLog = results.errors.map(e => `[ERR] ${e}`).join('\n') || 'None';
+      const scoreStr = results.scoresData
+        ? `C:${results.scoresData.Clarity} A:${results.scoresData.Accuracy}` : r2s(results.scores);
+      const row = `| LIVE | ${r2s(results.ws)} | ${r2s(results.t1)} | ${r2s(results.conv)} | ${r2s(results.t2)} | ${scoreStr} | ${r2s(results.close)} | ${handoffCount} handoffs |`;
+      const rec = () => {
+        if (results.t1 && results.t2) return '- [x] Test successful — model response and termination handled correctly.';
+        return '- [ ] Needs further investigation — see errors log';
+      };
+      $('reportMd').textContent =
+        `# Gemini Live Test Results: ${$('topicSelect').value}
 
 **Date:** ${date}  **Model:** ${MODEL_ID}
+**WS Handoffs:** ${handoffCount} (each at 9m 30s to avoid 10m server limit)
 
-| Sc | WS | T1 | Conv | T2→end | Scores | Close |
-|---|---|---|---|---|---|---|
+| Sc | WS | T1 | Conv | T2→end | Scores | Close | Handoffs |
+|---|---|---|---|---|---|---|---|
 ${row}
 
 ## Performance Summary
@@ -721,42 +2226,153 @@ ${errLog}
 
 ## Recommendation
 ${rec()}`;
-}
+    }
+    window.copyReport = () => navigator.clipboard.writeText($('reportMd').textContent);
 
-window.copyReport = ()=>navigator.clipboard.writeText($('reportMd').textContent);
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TABS & SLIDER
+    // ═══════════════════════════════════════════════════════════════════════════
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        $('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
 
-// ═══════════════════════════════════════════════════════════
-//  SCENARIO SELECTION
-// ═══════════════════════════════════════════════════════════
-// (Scenario Selection removed)
+    $('t2Range').addEventListener('input', e => {
+      $('t2ValDisplay').textContent = e.target.value + 'm';
+      localStorage.setItem('nova_duration', e.target.value);
+    });
+    $('topicSelect').addEventListener('change', e => {
+      const isCustom = e.target.value === 'custom';
+      $('customTopicField').style.display = isCustom ? 'flex' : 'none';
+      if (!isCustom) localStorage.setItem('nova_topic', e.target.value);
+    });
+    $('customTopicInput').addEventListener('input', e => {
+      localStorage.setItem('nova_custom_topic', e.target.value);
+    });
 
-// Main tabs
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-    tab.classList.add('active');
-    $('tab-'+tab.dataset.tab).classList.add('active');
-  });
-});
+    // Restore saved settings
+    (() => {
+      const savedTopic = localStorage.getItem('nova_topic');
+      const savedCustom = localStorage.getItem('nova_custom_topic');
+      const savedDuration = localStorage.getItem('nova_duration');
+      if (savedTopic && Array.from($('topicSelect').options).some(o => o.value === savedTopic)) {
+        $('topicSelect').value = savedTopic;
+      } else if (savedCustom) {
+        $('topicSelect').value = 'custom';
+        $('customTopicField').style.display = 'flex';
+        $('customTopicInput').value = savedCustom;
+      }
+      if (savedDuration) { $('t2Range').value = savedDuration; $('t2ValDisplay').textContent = savedDuration + 'm'; }
+    })();
 
+    $('startBtn').addEventListener('click', () => {
+      if ($('topicSelect').value === 'custom' && !$('customTopicInput').value.trim()) {
+        $('startErr').textContent = 'Please enter a custom topic'; return;
+      }
+      $('startErr').textContent = '';
+      connect(false);
+    });
 
-// Start
-$('startBtn').addEventListener('click',connect);
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  AUTO-LOAD API KEY
+    // ═══════════════════════════════════════════════════════════════════════════
+    (async () => {
+      try {
+        const res = await fetch('/config');
+        const { apiKey } = await res.json();
+        if (apiKey) { $('apiKey').value = apiKey; log('✅ API key loaded from .env', 'success'); }
+        else { log('⚠️ No API key in server .env', 'warn'); }
+      } catch (_) { log('⚠️ Failed to load API key from /config', 'warn'); }
+    })();
 
-// ═══════════════════════════════════════════════════════════
-//  AUTO-LOAD API KEY (SILENT)
-// ═══════════════════════════════════════════════════════════
-(async()=>{
-  try {
-    const res=await fetch('/config');
-    const {apiKey}=await res.json();
-    if(apiKey){ $('apiKey').value=apiKey; log('✅ API key loaded securely from .env', 'success'); }
-    else { log('⚠️ No API key found in server .env', 'warn'); }
-  } catch(_){ log('⚠️ Failed to load API key from /config', 'warn'); }
-})();
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PRE-END OVERLAY
+    // ═══════════════════════════════════════════════════════════════════════════
+    let preendShown = false;
+    let peStepInterval = null;
 
-updateReport();
-</script>
+    function showPreendOverlay() {
+      if (preendShown) return;
+      preendShown = true;
+      $('preendOverlay').classList.add('show');
+
+      const steps = [0, 1, 2, 3, 4];
+      const bar = $('peBar');
+      const cdEl = $('peCountdown');
+      let step = 0;
+
+      // Immediately mark step 0 active
+      activateStep(0);
+      bar.style.width = '10%';
+
+      // Sequence through steps every ~2s
+      peStepInterval = setInterval(() => {
+        step++;
+        if (step < steps.length) {
+          doneStep(step - 1);
+          activateStep(step);
+          bar.style.width = `${10 + step * 18}%`;
+        } else {
+          clearInterval(peStepInterval);
+          bar.style.width = '95%';
+        }
+      }, 1800);
+
+      // Live countdown inside the card
+      const cdTimer = setInterval(() => {
+        const s = Math.max(0, secondsLeft);
+        cdEl.textContent = s > 0 ? `~${s}s remaining` : 'Submitting…';
+        if (s <= 0) clearInterval(cdTimer);
+      }, 1000);
+    }
+
+    function activateStep(i) {
+      const el = $(`peStep${i}`);
+      if (!el) return;
+      el.classList.add('active');
+      el.querySelector('.pe-step-icon').textContent = '◉';
+    }
+    function doneStep(i) {
+      const el = $(`peStep${i}`);
+      if (!el) return;
+      el.classList.remove('active');
+      el.classList.add('done');
+      el.querySelector('.pe-step-icon').textContent = '✓';
+    }
+
+    function hidePreendOverlay() {
+      $('preendOverlay').classList.remove('show');
+      clearInterval(peStepInterval);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TIMER UI
+    // ═══════════════════════════════════════════════════════════════════════════
+    function updateTimerUI() {
+      const m = Math.max(0, Math.floor(secondsLeft / 60));
+      const s = Math.max(0, secondsLeft % 60);
+      const el = $('sessionTimer');
+      if (!el) return;
+      el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+      if (secondsLeft <= 10 && secondsLeft > 0 && t2Fired) {
+        // Show pre-end overlay in last 10s after termination signal fires
+        showPreendOverlay();
+        el.classList.add('warning');
+      } else if (secondsLeft <= 20 && secondsLeft > 0) {
+        el.classList.add('warning');
+        // Optional: you could add a 'Wrapping up...' label here
+      } else {
+        el.classList.remove('warning');
+      }
+    }
+
+    updateReport();
+  </script>
 </body>
+
 </html>
